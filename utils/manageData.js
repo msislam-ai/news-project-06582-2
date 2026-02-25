@@ -237,6 +237,21 @@ export async function manageData() {
 
     console.log("🧹 Duplicate news cleaned");
 
+     /* =================================
+   4️⃣ Remove Broken Image News
+=================================*/
+const broken = await collection.deleteMany({
+  $or:[
+    {image:null},
+    {image:""},
+    {image:{$exists:false}},
+    {image:{$regex:/placeholder/i}}
+  ]
+});
+
+console.log("🧹 Broken images:",broken.deletedCount);
+     
+
     /* =============================
        Recategorize All News
     ============================= */
@@ -276,4 +291,5 @@ export async function manageData() {
     await clientDB.close();
     console.log("🔌 DB Connection Closed");
   }
+
 }
