@@ -19,18 +19,34 @@ const PORT = process.env.PORT || 5000;
 // ======================
 app.use(express.json());
 
-// Production-safe CORS
+// Standard CORS for all normal requests
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173", // frontend URL from .env
+    origin: process.env.CLIENT_URL || "http://localhost:5173",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
   })
 );
 
-// Preflight requests handler (fixed PathError)
-app.options("/", cors());
-app.options("/news/*", cors());
+// Preflight handler for all routes (OPTION 2 - robust)
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    res.header(
+      "Access-Control-Allow-Origin",
+      process.env.CLIENT_URL || "http://localhost:5173"
+    );
+    res.header(
+      "Access-Control-Allow-Methods",
+      "GET,POST,PUT,DELETE,OPTIONS"
+    );
+    res.header(
+      "Access-Control-Allow-Headers",
+      "Content-Type,Authorization"
+    );
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 // ======================
 // Routes
@@ -46,18 +62,18 @@ app.get("/", (req, res) => {
 // ======================
 async function startServer() {
   try {
-    // 1️⃣ Connect DB first
+    // Connect to MongoDB first
     await connectDB();
     console.log("✅ MongoDB Connected");
 
-    // 2️⃣ Start server
+    // Start server
     app.listen(PORT, async () => {
       console.log(`🚀 Server running on port ${PORT}`);
 
-      // 3️⃣ Initial news fetch
+      // Initial news fetch
       await fetchAndSaveAllNews();
 
-      // 4️⃣ Start schedulers
+      // Start schedulers
       startAutoNewsUpdater();
       startDailyManager();
     });
@@ -66,5 +82,5 @@ async function startServer() {
   }
 }
 
-// Start the server
+// Start the backend
 startServer();
