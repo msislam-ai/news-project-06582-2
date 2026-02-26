@@ -5,84 +5,62 @@ import newsRoutes from "./routes/newsRoutes.js";
 import connectDB from "./config/db.js";
 import { fetchAndSaveAllNews } from "./services/newsAggregator.js";
 import { startAutoNewsUpdater } from "./services/autoNewsUpdater.js";
-import { manageData } from "./utils/manageData.js"; 
 import { startDailyManager } from "./services/dailyManager.js";
 
-// Load ENV first
+// Load ENV
 dotenv.config();
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
-
-
-/* ======================
-   Middleware
-====================== */
-
+// ======================
+// Middleware
+// ======================
 app.use(express.json());
 
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:5173",
-  "https://exciting-aj.vercel.app",
-  "https://j34vsk-5173.csb.app",
-];
-
+// Production-safe CORS
 app.use(
   cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        console.log("Blocked by CORS:", origin);
-        callback(null, true); // allow temporarily
-      }
-    },
+    origin: process.env.CLIENT_URL || "http://localhost:5173", // set frontend URL in .env
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
   })
 );
 
-/* ======================
-   Routes
-====================== */
+// Handle preflight requests
+app.options("*", cors());
 
+// ======================
+// Routes
+// ======================
 app.use("/news", newsRoutes);
 
 app.get("/", (req, res) => {
   res.send("AI News Backend Running");
 });
 
-/* ======================
-   Start Server
-====================== */
-
-
-const PORT = process.env.PORT || 5000;
-
+// ======================
+// Start Server
+// ======================
 async function startServer() {
   try {
-
-    // 1️⃣ Connect DB first
+    // Connect to DB first
     await connectDB();
+    console.log("✅ MongoDB Connected");
 
-    // 2️⃣ Start server
+    // Start server
     app.listen(PORT, async () => {
       console.log(`🚀 Server running on port ${PORT}`);
 
-      // 3️⃣ Initial fetch
+      // Initial news fetch
       await fetchAndSaveAllNews();
 
-      // 4️⃣ Start scheduler
+      // Start schedulers
       startAutoNewsUpdater();
-
-        // Daily DB cleanup + recategorization
-       startDailyManager();
+      startDailyManager();
     });
-
   } catch (error) {
-    console.error("Server startup failed:", error);
+    console.error("❌ Server startup failed:", error);
   }
 }
 
