@@ -24,7 +24,7 @@ app.use(express.json());
 app.use(cors({
   origin: [
     "http://localhost:3000",
-    "https://news-project-06582-frontend.vercel.app",
+    "https://exciting-aj.vercel.app",
      "https://j34vsk-5173.csb.app",
   ]
 }));
@@ -72,3 +72,4 @@ async function startServer() {
 }
 
 startServer();
+
