@@ -1,4 +1,3 @@
-// server.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -6,79 +5,69 @@ import newsRoutes from "./routes/newsRoutes.js";
 import connectDB from "./config/db.js";
 import { fetchAndSaveAllNews } from "./services/newsAggregator.js";
 import { startAutoNewsUpdater } from "./services/autoNewsUpdater.js";
+import { manageData } from "./utils/manageData.js"; 
 import { startDailyManager } from "./services/dailyManager.js";
 
-// Load environment variables
+// Load ENV first
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
-// ======================
-// Middleware
-// ======================
+
+
+/* ======================
+   Middleware
+====================== */
+
 app.use(express.json());
 
-// Standard CORS for normal requests
-app.use(
-  cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    credentials: true,
-  })
-);
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "https://exciting-aj.vercel.app",
+     "https://j34vsk-5173.csb.app",
+  ]
+}));
 
-// Preflight handler for all routes (no wildcards)
-app.use((req, res, next) => {
-  if (req.method === "OPTIONS") {
-    res.header(
-      "Access-Control-Allow-Origin",
-      process.env.CLIENT_URL || "http://localhost:5173"
-    );
-    res.header(
-      "Access-Control-Allow-Methods",
-      "GET,POST,PUT,DELETE,OPTIONS"
-    );
-    res.header(
-      "Access-Control-Allow-Headers",
-      "Content-Type,Authorization"
-    );
-    return res.sendStatus(200); // respond to preflight
-  }
-  next();
-});
+/* ======================
+   Routes
+====================== */
 
-// ======================
-// Routes
-// ======================
-app.use("/news/all", newsRoutes);
+app.use("/news", newsRoutes);
 
 app.get("/", (req, res) => {
   res.send("AI News Backend Running");
 });
 
-// ======================
-// Start Server
-// ======================
+/* ======================
+   Start Server
+====================== */
+
+
+const PORT = process.env.PORT || 5000;
+
 async function startServer() {
   try {
-    // Connect to DB
-    await connectDB();
-    console.log("✅ MongoDB Connected");
 
-    // Start server
+    // 1️⃣ Connect DB first
+    await connectDB();
+
+    // 2️⃣ Start server
     app.listen(PORT, async () => {
       console.log(`🚀 Server running on port ${PORT}`);
 
-      // Initial news fetch
+      // 3️⃣ Initial fetch
       await fetchAndSaveAllNews();
 
-      // Start schedulers
+      // 4️⃣ Start scheduler
       startAutoNewsUpdater();
-      startDailyManager();
+
+        // Daily DB cleanup + recategorization
+       startDailyManager();
     });
+
   } catch (error) {
-    console.error("❌ Server startup failed:", error);
+    console.error("Server startup failed:", error);
   }
 }
 
