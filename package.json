@@ -21,6 +21,9 @@
     "node-cron": "^4.2.1",
     "playwright": "^1.58.2",
     "puterjs": "^2.0.0",
+    "helmet": "^7.0.0",
+    "compression": "^1.7.4",
     "rss-parser": "^3.13.0"
   }
 }
+
