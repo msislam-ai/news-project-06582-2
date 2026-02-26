@@ -2,7 +2,6 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 
-// Import your routes and services
 import newsRoutes from "./routes/newsRoutes.js";
 import connectDB from "./config/db.js";
 import { fetchAndSaveAllNews } from "./services/newsAggregator.js";
@@ -14,13 +13,13 @@ dotenv.config();
 const app = express();
 
 /* ======================================================
-   CORS CONFIGURATION (Fixed & Simplified)
+   CORS CONFIGURATION (Fixed for Express 5+)
 ====================================================== */
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "https://exciting-aj.vercel.app",
-  "https://j34vsk-5173.csb.app" // Your CodeSandbox if needed
+  "https://j34vsk-5173.csb.app"
 ];
 
 const corsOptions = {
@@ -36,7 +35,6 @@ const corsOptions = {
     }
 
     // 3. Allow Vercel Previews (Dynamic Subdomains)
-    // This allows any URL ending in .vercel.app that contains "exciting-aj"
     if (origin.endsWith(".vercel.app") && origin.includes("exciting-aj")) {
       return callback(null, true);
     }
@@ -48,14 +46,15 @@ const corsOptions = {
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  optionsSuccessStatus: 200 // Some legacy browsers choke on 204
+  optionsSuccessStatus: 200
 };
 
-// Apply CORS globally - MUST be before routes
+// Apply CORS globally
 app.use(cors(corsOptions));
 
 // Handle preflight requests explicitly
-app.options("*", cors(corsOptions));
+// FIX: Changed '*' to '(.*)' because Express 5 throws an error with '*'
+app.options("(.*)", cors(corsOptions));
 
 /* ======================
    Middleware
@@ -66,7 +65,6 @@ app.use(express.urlencoded({ extended: true }));
 /* ======================
    Routes
 ====================== */
-// Health check
 app.get("/", (req, res) => {
   res.send("AI News Backend Running");
 });
@@ -75,7 +73,6 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
-// API Routes
 app.use("/news", newsRoutes);
 
 /* ======================
@@ -83,9 +80,12 @@ app.use("/news", newsRoutes);
 ====================== */
 app.use((err, req, res, next) => {
   console.error("❌ Server Error:", err.stack || err);
+  // Ensure we don't try to send a response if one was already sent
+  if (res.headersSent) {
+    return next(err);
+  }
   res.status(500).json({ 
-    error: err.message || "Internal Server Error",
-    details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    error: err.message || "Internal Server Error"
   });
 });
 
@@ -102,15 +102,13 @@ const startServer = async () => {
     app.listen(PORT, async () => {
       console.log(`🚀 Server running on port ${PORT}`);
 
-      // Run background tasks safely
       try {
-        await fetchAndSaveAllNews(); // Initial fetch
-        startAutoNewsUpdater();      // Scheduler
-        startDailyManager();         // Cleanup
+        await fetchAndSaveAllNews();
+        startAutoNewsUpdater();
+        startDailyManager();
         console.log("✅ Background services started");
       } catch (serviceError) {
         console.error("⚠️ Background service error:", serviceError);
-        // We do not exit process here, so the server keeps running
       }
     });
 
