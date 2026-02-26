@@ -26,7 +26,6 @@ const allowedOrigins = [
   "https://j34vsk-5173.csb.app",
   "https://exciting-aj-git-main-sadekul-islams-projects-ba35ed38.vercel.app",
   "https://exciting-kf8t5d8y8-sadekul-islams-projects-ba35ed38.vercel.app",
-];
   "http://localhost:3000"
 ];
 
@@ -67,6 +66,7 @@ async function startServer(){
 }
 
 startServer();
+
 
 
 
