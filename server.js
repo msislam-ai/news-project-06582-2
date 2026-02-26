@@ -5,23 +5,22 @@ import newsRoutes from "./routes/newsRoutes.js";
 import connectDB from "./config/db.js";
 import { fetchAndSaveAllNews } from "./services/newsAggregator.js";
 import { startAutoNewsUpdater } from "./services/autoNewsUpdater.js";
+import { manageData } from "./utils/manageData.js"; 
 import { startDailyManager } from "./services/dailyManager.js";
 
-// ======================
-// Load ENV
-// ======================
+// Load ENV first
 dotenv.config();
 
 const app = express();
 
-// ======================
-// Middleware
-// ======================
 
-// JSON parser
+
+/* ======================
+   Middleware
+====================== */
+
 app.use(express.json());
 
-// ✅ PRODUCTION CORS (IMPORTANT)
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
@@ -32,57 +31,58 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // allow Postman / server requests
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         console.log("Blocked by CORS:", origin);
-        callback(new Error("Not allowed by CORS"));
+        callback(null, true); // allow temporarily
       }
     },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
   })
 );
 
-// ✅ Handle preflight requests
-app.options("*", cors());
-
-// ======================
-// Routes
-// ======================
+/* ======================
+   Routes
+====================== */
 
 app.use("/news", newsRoutes);
 
 app.get("/", (req, res) => {
-  res.send("🚀 AI News Backend Running");
+  res.send("AI News Backend Running");
 });
 
-// ======================
-// Start Server
-// ======================
+/* ======================
+   Start Server
+====================== */
+
 
 const PORT = process.env.PORT || 5000;
 
 async function startServer() {
   try {
-    // 1️⃣ Connect MongoDB
+
+    // 1️⃣ Connect DB first
     await connectDB();
 
-    // 2️⃣ Start Express Server
-    app.listen(PORT, () => {
+    // 2️⃣ Start server
+    app.listen(PORT, async () => {
       console.log(`🚀 Server running on port ${PORT}`);
+
+      // 3️⃣ Initial fetch
+      await fetchAndSaveAllNews();
+
+      // 4️⃣ Start scheduler
+      startAutoNewsUpdater();
+
+        // Daily DB cleanup + recategorization
+       startDailyManager();
     });
 
-    // 3️⃣ Background Services (NON-BLOCKING)
-    fetchAndSaveAllNews();
-    startAutoNewsUpdater();
-    startDailyManager();
-
   } catch (error) {
-    console.error("❌ Server startup failed:", error);
+    console.error("Server startup failed:", error);
   }
 }
 
