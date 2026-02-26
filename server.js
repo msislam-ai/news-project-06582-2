@@ -1,10 +1,8 @@
-// server.js  (ESM version – works when package.json has "type": "module")
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
 
+// Import your routes and services
 import newsRoutes from "./routes/newsRoutes.js";
 import connectDB from "./config/db.js";
 import { fetchAndSaveAllNews } from "./services/newsAggregator.js";
@@ -13,53 +11,62 @@ import { startDailyManager } from "./services/dailyManager.js";
 
 dotenv.config();
 
-// ── __dirname shim for ESM ─────────────────────────────────────────────────────
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-// ────────────────────────────────────────────────────────────────────────────────
-
 const app = express();
 
-/* ====================== CORS (Vercel + local) ============================= */
-const allowList = new Set([
+/* ======================================================
+   CORS CONFIGURATION (Fixed & Simplified)
+====================================================== */
+const allowedOrigins = [
+  "http://localhost:3000",
   "http://localhost:5173",
   "https://exciting-aj.vercel.app",
-  "https://j34vsk-5173.csb.app",
-]);
-
-// Vercel preview URLs look like:
-// https://exciting-aj-git-branch-username.vercel.app
-const vercelPreview = /^https:\/\/exciting-aj(-[\w-]+)?\.vercel\.app$/;
+  "https://j34vsk-5173.csb.app" // Your CodeSandbox if needed
+];
 
 const corsOptions = {
-  origin(origin, cb) {
-    // No Origin header → server‑to‑server or curl → allow
-    if (!origin) return cb(null, true);
+  origin: (origin, callback) => {
+    // 1. Allow requests with no origin (like Postman, cURL, or server-to-server)
+    if (!origin) {
+      return callback(null, true);
+    }
 
-    if (allowList.has(origin) || vercelPreview.test(origin))
-      return cb(null, true);
+    // 2. Check if origin is explicitly allowed
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
 
-    // Reject – the header simply won’t be added
-    return cb(null, false);
+    // 3. Allow Vercel Previews (Dynamic Subdomains)
+    // This allows any URL ending in .vercel.app that contains "exciting-aj"
+    if (origin.endsWith(".vercel.app") && origin.includes("exciting-aj")) {
+      return callback(null, true);
+    }
+
+    // 4. If nothing matches, block it
+    console.log(`🚫 CORS Blocked: ${origin}`);
+    return callback(new Error("Not allowed by CORS"));
   },
-  credentials: true, // needed only if you send cookies / auth headers
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  optionsSuccessStatus: 204,
+  optionsSuccessStatus: 200 // Some legacy browsers choke on 204
 };
 
+// Apply CORS globally - MUST be before routes
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // pre‑flight for every route
 
-/* ====================== Middleware ====================================== */
-app.use(express.json({ limit: "1mb" }));
+// Handle preflight requests explicitly
+app.options("*", cors(corsOptions));
+
+/* ======================
+   Middleware
+====================== */
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-/* ====================== Public folder (if you have one) ================ */
-// Example: serve static images uploaded by the aggregator
-// app.use("/static", express.static(path.join(__dirname, "public")));
-
- /* ====================== Routes ========================================= */
+/* ======================
+   Routes
+====================== */
+// Health check
 app.get("/", (req, res) => {
   res.send("AI News Backend Running");
 });
@@ -68,43 +75,49 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
+// API Routes
 app.use("/news", newsRoutes);
 
-/* ====================== Error handling ================================ */
+/* ======================
+   Error Handling
+====================== */
 app.use((err, req, res, next) => {
-  console.error("❌ Error:", err?.stack || err);
-  const status = err?.statusCode ?? 500;
-  res.status(status).json({ error: err?.message ?? "Internal Server Error" });
+  console.error("❌ Server Error:", err.stack || err);
+  res.status(500).json({ 
+    error: err.message || "Internal Server Error",
+    details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
 });
 
-/* ====================== Server start ================================== */
+/* ======================
+   Start Server
+====================== */
 const PORT = process.env.PORT || 5000;
 
-async function startServer() {
+const startServer = async () => {
   try {
-    await connectDB();               // ← your MongoDB (or other) connection
-    app.listen(PORT, () => {
-      console.log(`🚀 Server listening on http://localhost:${PORT}`);
+    await connectDB();
+    console.log("✅ Database connected");
 
-      // ---- background jobs (fire‑and‑forget) ---------------------------
-      fetchAndSaveAllNews().catch((e) =>
-        console.error("⚡ fetchAndSaveAllNews failed:", e)
-      );
+    app.listen(PORT, async () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+
+      // Run background tasks safely
       try {
-        startAutoNewsUpdater();
-      } catch (e) {
-        console.error("⚡ startAutoNewsUpdater failed:", e);
-      }
-      try {
-        startDailyManager();
-      } catch (e) {
-        console.error("⚡ startDailyManager failed:", e);
+        await fetchAndSaveAllNews(); // Initial fetch
+        startAutoNewsUpdater();      // Scheduler
+        startDailyManager();         // Cleanup
+        console.log("✅ Background services started");
+      } catch (serviceError) {
+        console.error("⚠️ Background service error:", serviceError);
+        // We do not exit process here, so the server keeps running
       }
     });
-  } catch (e) {
-    console.error("💥 Server startup error:", e);
+
+  } catch (error) {
+    console.error("❌ Critical Startup Error:", error);
     process.exit(1);
   }
-}
+};
 
 startServer();
