@@ -27,7 +27,7 @@ app.use(cors({
 }));
 
 // Preflight handling
-app.options('*', cors());
+//app.options('*', cors());
 
 // ======================
 // MIDDLEWARE
@@ -100,3 +100,4 @@ async function startServer() {
 }
 
 startServer();
+
