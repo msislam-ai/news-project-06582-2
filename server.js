@@ -51,7 +51,7 @@ app.use((req, res, next) => {
 // ======================
 // Routes
 // ======================
-app.use("/news", newsRoutes);
+app.use("/news/all", newsRoutes);
 
 app.get("/", (req, res) => {
   res.send("AI News Backend Running");
@@ -84,3 +84,4 @@ async function startServer() {
 
 // Start the backend
 startServer();
+
