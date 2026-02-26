@@ -1,3 +1,4 @@
+// server.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -7,7 +8,7 @@ import { fetchAndSaveAllNews } from "./services/newsAggregator.js";
 import { startAutoNewsUpdater } from "./services/autoNewsUpdater.js";
 import { startDailyManager } from "./services/dailyManager.js";
 
-// Load ENV
+// Load environment variables
 dotenv.config();
 
 const app = express();
@@ -21,14 +22,15 @@ app.use(express.json());
 // Production-safe CORS
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173", // set frontend URL in .env
+    origin: process.env.CLIENT_URL || "http://localhost:5173", // frontend URL from .env
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
   })
 );
 
-// Handle preflight requests
-app.options("*", cors());
+// Preflight requests handler (fixed PathError)
+app.options("/", cors());
+app.options("/news/*", cors());
 
 // ======================
 // Routes
@@ -44,18 +46,18 @@ app.get("/", (req, res) => {
 // ======================
 async function startServer() {
   try {
-    // Connect to DB first
+    // 1️⃣ Connect DB first
     await connectDB();
     console.log("✅ MongoDB Connected");
 
-    // Start server
+    // 2️⃣ Start server
     app.listen(PORT, async () => {
       console.log(`🚀 Server running on port ${PORT}`);
 
-      // Initial news fetch
+      // 3️⃣ Initial news fetch
       await fetchAndSaveAllNews();
 
-      // Start schedulers
+      // 4️⃣ Start schedulers
       startAutoNewsUpdater();
       startDailyManager();
     });
@@ -64,4 +66,5 @@ async function startServer() {
   }
 }
 
+// Start the server
 startServer();
