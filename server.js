@@ -1,4 +1,3 @@
-// server.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -12,92 +11,56 @@ import { startAutoNewsUpdater } from "./services/autoNewsUpdater.js";
 import { startDailyManager } from "./services/dailyManager.js";
 
 dotenv.config();
-
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ======================
-// CORS - MUST BE FIRST
-// ======================
-app.use(cors({
-  origin: "*",  // Allow all for now - restrict later
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
-
-// Preflight handling
-//app.options('*', cors());
-
-// ======================
-// MIDDLEWARE
-// ======================
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
+// ===== Middleware =====
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" }}));
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// ======================
-// ROUTES
-// ======================
-app.get("/", (req, res) => {
-  res.send("AI News Backend Running 🚀");
-});
+// ===== CORS =====
+const allowedOrigins = [
+  "https://exciting-aj.vercel.app",
+  "https://j34vsk-5173.csb.app",
+  "http://localhost:3000"
+];
 
-app.get("/health", (req, res) => {
-  res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
-});
+app.use(cors({
+  origin: (origin, callback) => {
+    if(!origin) return callback(null, true);
+    if(allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error("CORS not allowed"));
+  },
+  credentials: true
+}));
 
-// Debug route to check CORS
-app.get("/test-cors", (req, res) => {
-  res.json({ 
-    message: "CORS working!", 
-    origin: req.headers.origin,
-    headers: req.headers
-  });
-});
-
+// ===== Routes =====
+app.get("/", (req, res) => res.send("AI News Backend Running 🚀"));
+app.get("/health", (req,res) => res.json({ status:"OK", timestamp:new Date().toISOString() }));
 app.use("/news", newsRoutes);
 
-// ======================
-// ERROR HANDLING
-// ======================
-app.use((req, res) => {
-  res.status(404).json({ error: "Route not found" });
+// ===== Error handling =====
+app.use((req,res)=>res.status(404).json({ error:"Route not found" }));
+app.use((err,req,res,next)=>{
+  console.error(err);
+  res.status(err.status||500).json({ error: err.message || "Internal Server Error" });
 });
 
-app.use((err, req, res, next) => {
-  console.error("Error:", err);
-  res.status(err.status || 500).json({
-    error: err.message || "Internal Server Error"
-  });
-});
-
-// ======================
-// START SERVER
-// ======================
-async function startServer() {
-  try {
-    // 1️⃣ Connect to MongoDB
+// ===== Start Server =====
+async function startServer(){
+  try{
     await connectDB();
-    console.log("✅ Database connected!");
-
-    // 2️⃣ Initial fetch & start schedulers
     await fetchAndSaveAllNews();
     startAutoNewsUpdater();
     startDailyManager();
 
-    // 3️⃣ Start Express server
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error("❌ Server startup failed:", error);
+    app.listen(PORT, ()=>console.log(`🚀 Server running on port ${PORT}`));
+  } catch(err){
+    console.error("❌ Server failed:", err);
     process.exit(1);
   }
 }
 
 startServer();
-
