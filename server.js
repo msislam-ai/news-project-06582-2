@@ -24,6 +24,7 @@ app.use(express.urlencoded({ extended: true }));
 const allowedOrigins = [
   "https://exciting-aj.vercel.app",
   "https://j34vsk-5173.csb.app",
+  "exciting-kf8t5d8y8-sadekul-islams-projects-ba35ed38.vercel.app",
   "http://localhost:3000"
 ];
 
@@ -64,3 +65,4 @@ async function startServer(){
 }
 
 startServer();
+
