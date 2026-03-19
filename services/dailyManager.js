@@ -3,23 +3,23 @@ import { manageData } from "../utils/manageData.js";
 
 export function startDailyManager() {
 
-  // Run immediately on server start
+  // run immediately when server starts
   runManager();
 
-  // Run every 3 minutes (for testing)
-  cron.schedule("*/3 * * * *", async () => {
+  // run once every 24 hours
+  cron.schedule("0 */24 * * *", async () => {
     await runManager();
   });
 
-  console.log("📅 Daily manager scheduled (every 3 minutes for testing)");
+  console.log("📅 Daily manager scheduled (every 24 hours)");
 }
 
 async function runManager() {
   console.log("🧠 Running daily DB manager...");
 
   try {
-    const count = await manageData();
-    console.log(`✅ DB management completed, ${count} news processed`);
+    await manageData();
+    console.log("✅ DB management completed");
   } catch (err) {
     console.error("❌ Daily manager error:", err);
   }
