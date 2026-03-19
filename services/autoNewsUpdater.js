@@ -14,6 +14,7 @@ export function startAutoNewsUpdater() {
   // Run every 10 minutes
   cron.schedule("*/10 * * * *", async () => {
     const startTime = new Date();
+    console.log("\n======================================");
     console.log("🔄 Auto updating news at:", startTime.toISOString());
 
     try {
@@ -67,7 +68,7 @@ export function startAutoNewsUpdater() {
               category: item.category || "General",
               referenceType: "rss",
 
-              // ✅ TRACK UPDATE TIME
+              // ✅ Track update time
               updatedAt: new Date(),
             };
           } catch (err) {
@@ -95,7 +96,6 @@ export function startAutoNewsUpdater() {
       ====================== */
 
       const cleanedArticles = cleanNewsData(allArticles);
-
       console.log(`🧹 Cleaned articles: ${cleanedArticles.length}`);
 
       /* ======================
@@ -109,9 +109,7 @@ export function startAutoNewsUpdater() {
             update: {
               $set: {
                 ...article,
-
-                // ✅ ALWAYS UPDATE TIME
-                updatedAt: new Date(),
+                updatedAt: new Date(), // always refresh time
               },
             },
             upsert: true,
@@ -121,13 +119,41 @@ export function startAutoNewsUpdater() {
         const result = await News.bulkWrite(operations);
 
         console.log(`✅ New inserted: ${result.upsertedCount}`);
-        console.log(`♻️ Modified: ${result.modifiedCount}`);
+        console.log(`♻️ Updated existing: ${result.modifiedCount}`);
+
+        /* ======================
+           🔥 SHOW SAMPLE UPDATED NEWS
+        ====================== */
+
+        const sampleArticles = cleanedArticles.slice(0, 5);
+
+        console.log("\n📰 Sample updated news:");
+        sampleArticles.forEach((a, i) => {
+          console.log(
+            `${i + 1}. ${a.title}\n   ⏱ ${new Date().toISOString()}\n   🔗 ${a.url}\n`
+          );
+        });
+
+        /* ======================
+           📊 SUMMARY
+        ====================== */
+
+        console.log("📊 SUMMARY:");
+        console.log({
+          totalFetched: rssItems.length,
+          cleaned: cleanedArticles.length,
+          inserted: result.upsertedCount,
+          updated: result.modifiedCount,
+        });
+
       } else {
         console.log("⚠️ No cleaned articles to save");
       }
 
       const endTime = new Date();
-      console.log("📰 Auto updater completed at:", endTime.toISOString());
+      console.log("⏱ Last update finished at:", endTime.toISOString());
+      console.log("======================================\n");
+
     } catch (error) {
       console.log("❌ Auto updater error:", error.message);
     }
