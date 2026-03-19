@@ -6,21 +6,21 @@ export function startDailyManager() {
   // run immediately when server starts
   runManager();
 
-  // run once every 24 hours
-  cron.schedule("0 */24 * * *", async () => {
+  // 🔥 run every 3 minutes (TEST MODE)
+  cron.schedule("*/3 * * * *", async () => {
     await runManager();
   });
 
-  console.log("📅 Daily manager scheduled (every 24 hours)");
+  console.log("⏱️ Test manager scheduled (every 3 minutes)");
 }
 
 async function runManager() {
-  console.log("🧠 Running daily DB manager...");
+  console.log("🧠 Running DB manager...");
 
   try {
     await manageData();
     console.log("✅ DB management completed");
   } catch (err) {
-    console.error("❌ Daily manager error:", err);
+    console.error("❌ Manager error:", err);
   }
 }
