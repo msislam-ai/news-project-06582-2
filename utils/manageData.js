@@ -14,54 +14,81 @@ const COLLECTION_NAME = "news";
 const clientDB = new MongoClient(MONGO);
 
 /* =============================
-   Keyword Maps
+   Keyword Maps (Bangla + English)
 ============================= */
 const keywordMap = {
 
   politics: [
     "রাজনীতি","সরকার","মন্ত্রী","প্রধানমন্ত্রী","রাষ্ট্রপতি",
     "সংসদ","নির্বাচন","ভোট","বিএনপি","আওয়ামী লীগ",
-    "রাজনৈতিক","মিছিল","সমাবেশ"
+    "রাজনৈতিক","মিছিল","সমাবেশ",
+
+    "politics","government","minister","prime minister","president",
+    "parliament","election","vote","political","rally","protest"
   ],
 
   sports: [
     "খেলা","ক্রীড়া","ক্রিকেট","ফুটবল","ম্যাচ",
-    "বিশ্বকাপ","গোল","রান","খেলোয়াড়","টুর্নামেন্ট"
+    "বিশ্বকাপ","গোল","রান","খেলোয়াড়","টুর্নামেন্ট",
+
+    "sports","cricket","football","match","world cup",
+    "goal","run","player","tournament","game"
   ],
 
   entertainment: [
     "বিনোদন","সিনেমা","চলচ্চিত্র","নাটক","তারকা",
-    "অভিনেতা","অভিনেত্রী","গান","মিউজিক","শোবিজ"
+    "অভিনেতা","অভিনেত্রী","গান","মিউজিক","শোবিজ",
+
+    "entertainment","movie","film","cinema","drama",
+    "actor","actress","music","song","celebrity","showbiz"
   ],
 
   technology: [
     "প্রযুক্তি","ডিজিটাল","ইন্টারনেট","এআই",
-    "কম্পিউটার","সফটওয়্যার","অ্যাপ","স্টার্টআপ"
+    "কম্পিউটার","সফটওয়্যার","অ্যাপ","স্টার্টআপ",
+
+    "technology","tech","digital","internet","ai",
+    "computer","software","app","startup","it","innovation"
   ],
 
   national: [
     "বাংলাদেশ","ঢাকা","একুশে","শহীদ মিনার",
-    "স্বাধীনতা","মুক্তিযুদ্ধ","জাতীয়","দেশব্যাপী"
+    "স্বাধীনতা","মুক্তিযুদ্ধ","জাতীয়","দেশব্যাপী",
+
+    "bangladesh","dhaka","national","countrywide",
+    "independence","liberation war"
   ],
 
   international: [
     "আন্তর্জাতিক","বিশ্ব","যুক্তরাষ্ট্র","চীন",
-    "রাশিয়া","ইউক্রেন","জাতিসংঘ","গ্লোবাল"
+    "রাশিয়া","ইউক্রেন","জাতিসংঘ","গ্লোবাল",
+
+    "international","world","usa","china","russia",
+    "ukraine","un","global","foreign"
   ],
 
   economy: [
     "অর্থনীতি","ব্যাংক","ডলার","মুদ্রাস্ফীতি",
-    "বাজার","বাণিজ্য","বাজেট","শেয়ারবাজার"
+    "বাজার","বাণিজ্য","বাজেট","শেয়ারবাজার",
+
+    "economy","bank","dollar","inflation",
+    "market","trade","budget","stock market","finance"
   ],
 
   education: [
     "শিক্ষা","বিশ্ববিদ্যালয়","স্কুল","কলেজ",
-    "পরীক্ষা","এইচএসসি","এসএসসি","শিক্ষার্থী"
+    "পরীক্ষা","এইচএসসি","এসএসসি","শিক্ষার্থী",
+
+    "education","university","school","college",
+    "exam","student","hsc","ssc","academic"
   ],
 
   health: [
     "স্বাস্থ্য","হাসপাতাল","ডাক্তার","রোগী",
-    "ডেঙ্গু","করোনা","চিকিৎসা","টিকা"
+    "ডেঙ্গু","করোনা","চিকিৎসা","টিকা",
+
+    "health","hospital","doctor","patient",
+    "dengue","covid","treatment","vaccine","medical"
   ]
 };
 
@@ -77,16 +104,18 @@ function normalizeText(text = "") {
 
 /* =============================
    Smart Keyword Categorizer
+   (Word-based matching)
 ============================= */
 function categorizeWithKeywords(textInput) {
 
   const text = normalizeText(textInput);
+  const words = text.split(/\s+/);
 
   let scores = {};
 
   for (const [category, keywords] of Object.entries(keywordMap)) {
     scores[category] = keywords.filter(kw =>
-      text.includes(normalizeText(kw))
+      words.includes(normalizeText(kw))
     ).length;
   }
 
@@ -143,16 +172,9 @@ ${text}
       .trim();
 
     const allowed = [
-      "politics",
-      "sports",
-      "technology",
-      "entertainment",
-      "national",
-      "international",
-      "economy",
-      "education",
-      "health",
-      "general"
+      "politics","sports","technology","entertainment",
+      "national","international","economy",
+      "education","health","general"
     ];
 
     return allowed.includes(cleaned)
@@ -171,16 +193,9 @@ ${text}
 function mapCategory(cat) {
 
   const allowed = [
-    "politics",
-    "sports",
-    "technology",
-    "entertainment",
-    "national",
-    "international",
-    "economy",
-    "education",
-    "health",
-    "general"
+    "politics","sports","technology","entertainment",
+    "national","international","economy",
+    "education","health","general"
   ];
 
   if (!cat) return "general";
@@ -198,7 +213,6 @@ export async function manageData() {
   try {
 
     await clientDB.connect();
-
     const db = clientDB.db(DB_NAME);
     const collection = db.collection(COLLECTION_NAME);
 
@@ -237,25 +251,28 @@ export async function manageData() {
 
     console.log("🧹 Duplicate news cleaned");
 
-     /* =================================
-   4️⃣ Remove Broken Image News
-=================================*/
-const broken = await collection.deleteMany({
-  $or:[
-    {image:null},
-    {image:""},
-    {image:{$exists:false}},
-    {image:{$regex:/placeholder/i}}
-  ]
-});
+    /* =============================
+       Remove Broken Image News
+    ============================= */
+    const broken = await collection.deleteMany({
+      $or: [
+        { image: null },
+        { image: "" },
+        { image: { $exists: false } },
+        { image: { $regex: /placeholder/i } }
+      ]
+    });
 
-console.log("🧹 Broken images:",broken.deletedCount);
-     
+    console.log("🧹 Broken images:", broken.deletedCount);
 
     /* =============================
        Recategorize All News
+       (Sorted latest first)
     ============================= */
-    const allNews = await collection.find({}).toArray();
+    const allNews = await collection
+      .find({})
+      .sort({ createdAt: -1 }) // 🔥 latest first
+      .toArray();
 
     console.log(`🧠 Items to categorize: ${allNews.length}`);
 
@@ -286,8 +303,7 @@ console.log("🧹 Broken images:",broken.deletedCount);
 
   } catch (error) {
     console.error("Manage Data Error:", error);
-  }
-  finally {
+  } finally {
     await clientDB.close();
     console.log("🔌 DB Connection Closed");
   }
