@@ -129,7 +129,7 @@ router.get("/categories", async (req, res) => {
 router.get("/all", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;   // page number
-    const limit = parseInt(req.query.limit) || 20; // news per page
+    const limit = parseInt(req.query.limit) || 100; // news per page
     const skip = (page - 1) * limit;
 
     // Use aggregate + allowDiskUse for large datasets
