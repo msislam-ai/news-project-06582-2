@@ -1,17 +1,18 @@
+// services/dailyManager.js
 import cron from "node-cron";
 import { manageData } from "../utils/manageData.js";
 
 export function startDailyManager() {
 
-  // run immediately when server starts
+  // run immediately
   runManager();
 
-  // run once every 24 hours
+  // run every 3 minutes (for testing)
   cron.schedule("*/3 * * * *", async () => {
     await runManager();
   });
 
-  console.log("📅 Daily manager scheduled (every 24 hours)");
+  console.log("📅 Daily manager scheduled (every 3 minutes)");
 }
 
 async function runManager() {
