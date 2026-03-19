@@ -13,10 +13,10 @@ export function startAutoNewsUpdater() {
 
   // Run every 10 minutes
   cron.schedule("*/10 * * * *", async () => {
-    console.log("🔄 Auto updating news...");
+    const startTime = new Date();
+    console.log("🔄 Auto updating news at:", startTime.toISOString());
 
     try {
-
       let allArticles = [];
 
       /* ======================
@@ -24,15 +24,13 @@ export function startAutoNewsUpdater() {
       ====================== */
 
       const results = await Promise.all(
-        Object.keys(RSS_SOURCES).map(cat =>
+        Object.keys(RSS_SOURCES).map((cat) =>
           fetchRSSByCategory(cat)
         )
       );
 
       const rssItems = results.flat();
-
-      console.log("📰 RSS fetched:", rssItems.length);
-
+      console.log(`📰 RSS fetched: ${rssItems.length}`);
 
       /* ======================
          2️⃣ SCRAPE RSS ARTICLES
@@ -41,7 +39,6 @@ export function startAutoNewsUpdater() {
       const rssArticles = await Promise.all(
         rssItems.map(async (item) => {
           try {
-
             if (!item?.link) return null;
 
             let content = null;
@@ -52,7 +49,7 @@ export function startAutoNewsUpdater() {
               content = scraped?.content || null;
               image = scraped?.image || null;
             } catch (scrapeErr) {
-              console.log("Scraper failed:", scrapeErr.message);
+              console.log("⚠️ Scraper failed:", scrapeErr.message);
             }
 
             return {
@@ -68,18 +65,19 @@ export function startAutoNewsUpdater() {
               url: item.link,
               pubDate: item.publishDate || new Date(),
               category: item.category || "General",
-              referenceType: "rss"
-            };
+              referenceType: "rss",
 
+              // ✅ TRACK UPDATE TIME
+              updatedAt: new Date(),
+            };
           } catch (err) {
-            console.log("RSS article error:", err.message);
+            console.log("❌ RSS article error:", err.message);
             return null;
           }
         })
       );
 
       allArticles.push(...rssArticles.filter(Boolean));
-
 
       /* ======================
          3️⃣ FETCH NEWS API
@@ -89,9 +87,8 @@ export function startAutoNewsUpdater() {
         const apiSaved = await fetchAndSaveNews({ limit: 10 });
         console.log(`✅ NewsAPI fetched ${apiSaved} articles`);
       } catch (apiErr) {
-        console.log("News API fetch error:", apiErr.message);
+        console.log("⚠️ News API fetch error:", apiErr.message);
       }
-
 
       /* ======================
          4️⃣ CLEAN DATA
@@ -99,30 +96,40 @@ export function startAutoNewsUpdater() {
 
       const cleanedArticles = cleanNewsData(allArticles);
 
+      console.log(`🧹 Cleaned articles: ${cleanedArticles.length}`);
 
       /* ======================
          5️⃣ BULK UPSERT DB
       ====================== */
 
       if (cleanedArticles.length > 0) {
-
-        const operations = cleanedArticles.map(article => ({
+        const operations = cleanedArticles.map((article) => ({
           updateOne: {
             filter: { url: article.url },
-            update: { $set: article },
-            upsert: true
-          }
+            update: {
+              $set: {
+                ...article,
+
+                // ✅ ALWAYS UPDATE TIME
+                updatedAt: new Date(),
+              },
+            },
+            upsert: true,
+          },
         }));
 
         const result = await News.bulkWrite(operations);
 
-        console.log(`✅ ${result.upsertedCount} new articles added`);
+        console.log(`✅ New inserted: ${result.upsertedCount}`);
+        console.log(`♻️ Modified: ${result.modifiedCount}`);
+      } else {
+        console.log("⚠️ No cleaned articles to save");
       }
 
-      console.log("📰 Auto updater completed");
-
+      const endTime = new Date();
+      console.log("📰 Auto updater completed at:", endTime.toISOString());
     } catch (error) {
-      console.log("Auto updater error:", error.message);
+      console.log("❌ Auto updater error:", error.message);
     }
   });
 }
