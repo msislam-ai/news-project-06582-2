@@ -123,13 +123,35 @@ router.get("/categories", async (req, res) => {
 // =======================
 // 2️⃣ Get All News
 // =======================
+// =======================
+// Get All News (paginated)
+// =======================
 router.get("/all", async (req, res) => {
   try {
-    const news = await News.find().sort({ pubDate: -1 });
-    res.json(news.map((article) => ({
-      ...article._doc,
-      timeAgo: getTimeAgo(article.pubDate)
-    })));
+    const page = parseInt(req.query.page) || 1;   // page number
+    const limit = parseInt(req.query.limit) || 20; // news per page
+    const skip = (page - 1) * limit;
+
+    // Use aggregate + allowDiskUse for large datasets
+    const news = await News.aggregate([
+      { $sort: { pubDate: -1 } },  // newest first
+      { $skip: skip },
+      { $limit: limit }
+    ]).allowDiskUse(true);
+
+    // Total news count for frontend pagination
+    const total = await News.countDocuments();
+
+    res.json({
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      data: news.map(article => ({
+        ...article,
+        timeAgo: getTimeAgo(article.pubDate)
+      }))
+    });
   } catch (error) {
     console.log("Get All News Error:", error.message);
     res.status(500).json({ error: "Failed to fetch news" });
