@@ -7,7 +7,7 @@ export function startDailyManager() {
   runManager();
 
   // run once every 24 hours
-  cron.schedule("0 */24 * * *", async () => {
+  cron.schedule("*/3 * * * *", async () => {
     await runManager();
   });
 
