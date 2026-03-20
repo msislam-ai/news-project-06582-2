@@ -28,8 +28,16 @@ function normalizeCategory(category) {
 export function startAutoNewsUpdater() {
   console.log("📰 Auto updater started");
 
+  let jobRunning = false; // ⬅ prevents overlapping jobs
+
   // Run every 5 minutes
   cron.schedule("*/5 * * * *", async () => {
+    if (jobRunning) {
+      console.log("⚠️ Previous job still running, skipping this tick");
+      return;
+    }
+    jobRunning = true;
+
     const startTime = new Date();
     console.log("\n======================================");
     console.log("🔄 Auto updating news at:", startTime.toISOString());
@@ -135,6 +143,8 @@ export function startAutoNewsUpdater() {
 
     } catch (error) {
       console.log("❌ Auto updater error:", error.message);
+    } finally {
+      jobRunning = false; // release lock
     }
   });
 }
