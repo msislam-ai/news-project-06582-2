@@ -17,7 +17,7 @@ function normalizeCategory(category) {
   if (typeof category === "string") return category;
   if (typeof category === "object") {
     if (category.name) return String(category.name);
-    return JSON.stringify(category).slice(0, 50); // fallback
+    return JSON.stringify(category).slice(0, 50);
   }
   return String(category);
 }
@@ -28,14 +28,15 @@ function normalizeCategory(category) {
 export function startAutoNewsUpdater() {
   console.log("📰 Auto updater started");
 
-  let jobRunning = false; // ⬅ prevents overlapping jobs
+  let jobRunning = false;
 
   // Run every 5 minutes
   cron.schedule("*/5 * * * *", async () => {
     if (jobRunning) {
-      console.log("⚠️ Previous job still running, skipping this tick");
+      console.log("⚠️ Previous job still running, skipping...");
       return;
     }
+
     jobRunning = true;
 
     const startTime = new Date();
@@ -46,18 +47,23 @@ export function startAutoNewsUpdater() {
       let allArticles = [];
 
       /* ======================
-         1️⃣ FETCH RSS CATEGORY WISE
+         1️⃣ FETCH RSS
       ====================== */
       const results = await Promise.all(
         Object.keys(RSS_SOURCES).map(cat => fetchRSSByCategory(cat))
       );
-      const rssItems = results.flat().filter(i => i?.link);
+
+      let rssItems = results.flat().filter(i => i?.link);
+
+      // 🔥 Only latest 50 (avoid old duplicates)
+      rssItems = rssItems.slice(0, 50);
+
       console.log(`📰 RSS fetched: ${rssItems.length}`);
 
       /* ======================
-         2️⃣ SCRAPE RSS ARTICLES WITH LIMITED CONCURRENCY
+         2️⃣ SCRAPE (LIMITED)
       ====================== */
-      const limit = pLimit(5); // max 5 scrapes in parallel
+      const limit = pLimit(5);
 
       const rssArticles = await Promise.all(
         rssItems.map(item =>
@@ -70,8 +76,8 @@ export function startAutoNewsUpdater() {
                 const scraped = await scrapeArticle(item.link);
                 content = scraped?.content || null;
                 image = scraped?.image || null;
-              } catch (scrapeErr) {
-                console.log("⚠️ Scraper failed for URL:", item.link, scrapeErr.message);
+              } catch (err) {
+                console.log("⚠️ Scraper failed:", err.message);
               }
 
               return {
@@ -86,8 +92,7 @@ export function startAutoNewsUpdater() {
                 referenceType: "rss",
                 updatedAt: new Date(),
               };
-            } catch (err) {
-              console.log("❌ RSS article error:", err.message);
+            } catch {
               return null;
             }
           })
@@ -97,28 +102,51 @@ export function startAutoNewsUpdater() {
       allArticles.push(...rssArticles.filter(Boolean));
 
       /* ======================
-         3️⃣ FETCH NEWS API
+         3️⃣ NEWS API
       ====================== */
       try {
         const apiSaved = await fetchAndSaveNews({ limit: 10 });
-        console.log(`✅ NewsAPI fetched ${apiSaved} articles`);
-      } catch (apiErr) {
-        console.log("⚠️ News API fetch error:", apiErr.message);
+        console.log(`✅ NewsAPI saved: ${apiSaved}`);
+      } catch (err) {
+        console.log("⚠️ News API error:", err.message);
       }
 
       /* ======================
-         4️⃣ CLEAN DATA
+         4️⃣ CLEAN
       ====================== */
+      console.log("Before clean:", allArticles.length);
+
       const cleanedArticles = cleanNewsData(allArticles);
-      console.log(`🧹 Cleaned articles: ${cleanedArticles.length}`);
+
+      console.log("After clean:", cleanedArticles.length);
 
       /* ======================
-         5️⃣ BULK UPSERT DB
+         5️⃣ CHECK NEW VS EXISTING
+      ====================== */
+      const existingDocs = await News.find({
+        url: { $in: cleanedArticles.map(a => a.url) }
+      }).select("url");
+
+      const existingSet = new Set(existingDocs.map(d => d.url));
+
+      const newArticles = cleanedArticles.filter(
+        a => !existingSet.has(a.url)
+      );
+
+      console.log(`🆕 New articles detected: ${newArticles.length}`);
+
+      /* ======================
+         6️⃣ BULK UPSERT
       ====================== */
       if (cleanedArticles.length > 0) {
         const operations = cleanedArticles.map(article => ({
           updateOne: {
-            filter: { url: article.url },
+            filter: {
+              $or: [
+                { url: article.url },
+                { title: article.title }
+              ]
+            },
             update: { $set: { ...article, updatedAt: new Date() } },
             upsert: true,
           },
@@ -126,25 +154,27 @@ export function startAutoNewsUpdater() {
 
         const result = await News.bulkWrite(operations);
 
-        console.log(`✅ New inserted: ${result.upsertedCount}`);
-        console.log(`♻️ Updated existing: ${result.modifiedCount}`);
+        console.log(`✅ Inserted: ${result.upsertedCount}`);
+        console.log(`♻️ Updated: ${result.modifiedCount}`);
 
-        // Optional: log first 3 articles
+        // Sample log
         cleanedArticles.slice(0, 3).forEach((a, i) => {
-          console.log(`${i + 1}. ${a.title} | ${a.category} | UpdatedAt: ${a.updatedAt.toISOString()}`);
+          console.log(
+            `${i + 1}. ${a.title} | ${a.category} | ${a.updatedAt.toISOString()}`
+          );
         });
       } else {
-        console.log("⚠️ No cleaned articles to save");
+        console.log("⚠️ No articles to save");
       }
 
       const endTime = new Date();
-      console.log("⏱ Last update finished at:", endTime.toISOString());
+      console.log("⏱ Finished at:", endTime.toISOString());
       console.log("======================================\n");
 
     } catch (error) {
       console.log("❌ Auto updater error:", error.message);
     } finally {
-      jobRunning = false; // release lock
+      jobRunning = false;
     }
   });
 }
