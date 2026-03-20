@@ -207,14 +207,14 @@ export async function manageData() {
     /* =============================
        Delete Old News
     ============================= */
-    const tenDaysAgo = new Date();
-    tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+const fiveDaysAgo = new Date();
+fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-    const deleted = await collection.deleteMany({
-      createdAt: { $exists: true, $lt: tenDaysAgo }
-    });
+const deleted = await collection.deleteMany({
+  createdAt: { $exists: true, $lt: fiveDaysAgo }
+});
 
-    console.log(`🧹 Old news removed: ${deleted.deletedCount}`);
+console.log(`🧹 Old news removed: ${deleted.deletedCount}`);
 
     /* =============================
        Remove Duplicate Titles
