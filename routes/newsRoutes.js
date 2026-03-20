@@ -18,72 +18,49 @@ router.get("/update", async (req, res) => {
   try {
     let allArticles = [];
 
-    // --- 1. RSS Feed ---
     // --- Fetch RSS Category Wise ---
-for (const category of Object.keys(RSS_SOURCES)) {
+    for (const category of Object.keys(RSS_SOURCES)) {
+      const rssItems = await fetchRSSByCategory(category);
 
-  const rssItems = await fetchRSSByCategory(category);
+      const rssArticles = await Promise.all(
+        rssItems.slice(0, 5).map(async (item) => {
+          const { content: scrapedContent, image } = await scrapeArticle(item.link);
 
-  const rssArticles = await Promise.all(
-    rssItems.slice(0, 5).map(async (item) => {
+          const referenceText = scrapedContent?.length > 150
+            ? scrapedContent
+            : item.shortDescription || item.title;
 
-      const { content: scrapedContent, image } =
-        await scrapeArticle(item.link);
+          let aiContent = null;
+          try {
+            aiContent = await puterAIService.rewriteArticle(referenceText);
+          } catch {}
 
-      const referenceText =
-        scrapedContent?.length > 150
-          ? scrapedContent
-          : item.shortDescription || item.title;
+          return {
+            title: item.title,
+            description: item.shortDescription,
+            content: aiContent || scrapedContent || item.shortDescription || item.title,
+            image: image || null,
+            source: item.source,
+            url: item.link,
+            pubDate: item.publishDate,
+            category: category,
+            referenceType: scrapedContent ? "scraper" : "rss"
+          };
+        })
+      );
 
-      let aiContent = null;
+      allArticles.push(...rssArticles);
+    }
 
-      try {
-        aiContent = await puterAIService.rewriteArticle(referenceText);
-      } catch {}
-
-      return {
-        title: item.title,
-        description: item.shortDescription,
-        content:
-          aiContent ||
-          scrapedContent ||
-          item.shortDescription ||
-          item.title,
-
-        image: image || null,
-        source: item.source,
-        url: item.link,
-        pubDate: item.publishDate,
-        category: category, // ⭐ Category saved
-        referenceType: scrapedContent ? "scraper" : "rss"
-      };
-
-    })
-  );
-
-  allArticles.push(...rssArticles);
-}
-// GET all available categories
-router.get("/categories", async (req, res) => {
-  try {
-    const categories = await News.distinct("category");
-    res.json(categories);
-    console.log("Fetched categories:", categories);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch categories" });
-  }
-});
-
-
-    // --- 2. News API ---
+    // --- News API ---
     if (NEWS_API_KEY) {
       try {
         const { data } = await axios.get(
           `https://gnews.io/api/v4/top-headlines?token=${NEWS_API_KEY}&lang=en&max=10`
         );
 
-        if (data.articles && data.articles.length > 0) {
-          const apiArticles = data.articles.map((item) => ({
+        if (data.articles?.length) {
+          const apiArticles = data.articles.map(item => ({
             title: item.title,
             description: item.description,
             content: item.content,
@@ -93,7 +70,7 @@ router.get("/categories", async (req, res) => {
             pubDate: item.publishedAt,
             referenceType: "newsapi"
           }));
-          allArticles = allArticles.concat(apiArticles);
+          allArticles.push(...apiArticles);
         }
       } catch (apiErr) {
         console.log("News API fetch error:", apiErr.response?.data || apiErr.message);
@@ -103,7 +80,7 @@ router.get("/categories", async (req, res) => {
     // --- Clean & Categorize ---
     const cleanedArticles = cleanNewsData(allArticles);
 
-    // --- Save to DB (Prevent duplicates by URL) ---
+    // --- Save to DB (avoid duplicates) ---
     let savedCount = 0;
     for (const article of cleanedArticles) {
       const exists = await News.findOne({ url: article.url });
@@ -113,7 +90,12 @@ router.get("/categories", async (req, res) => {
       }
     }
 
-    res.json({ success: true, message: "News updated", totalFetched: allArticles.length, savedCount });
+    res.json({
+      success: true,
+      message: "News updated",
+      totalFetched: allArticles.length,
+      savedCount
+    });
   } catch (error) {
     console.log("Update News Error:", error.message);
     res.status(500).json({ success: false, error: error.message });
@@ -121,25 +103,19 @@ router.get("/categories", async (req, res) => {
 });
 
 // =======================
-// 2️⃣ Get All News
-// =======================
-// =======================
-// Get All News (paginated)
+// 2️⃣ Get All News (paginated, newest first)
 // =======================
 router.get("/all", async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;   // page number
-    const limit = parseInt(req.query.limit) || 100; // news per page
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 100;
     const skip = (page - 1) * limit;
 
-    // Use aggregate + allowDiskUse for large datasets
-    const news = await News.aggregate([
-      { $sort: { pubDate: -1 } },  // newest first
-      { $skip: skip },
-      { $limit: limit }
-    ]).allowDiskUse(true);
+    const news = await News.find({})
+      .sort({ pubDate: -1 })  // newest first
+      .skip(skip)
+      .limit(limit);
 
-    // Total news count for frontend pagination
     const total = await News.countDocuments();
 
     res.json({
@@ -148,7 +124,7 @@ router.get("/all", async (req, res) => {
       total,
       totalPages: Math.ceil(total / limit),
       data: news.map(article => ({
-        ...article,
+        ...article._doc,
         timeAgo: getTimeAgo(article.pubDate)
       }))
     });
@@ -159,13 +135,15 @@ router.get("/all", async (req, res) => {
 });
 
 // =======================
-// 3️⃣ Get News by Category
+// 3️⃣ Get News by Category (newest first)
 // =======================
 router.get("/category/:cat", async (req, res) => {
   try {
     const { cat } = req.params;
-    const news = await News.find({ category: cat }).sort({ pubDate: -1 });
-    res.json(news.map((article) => ({
+    const news = await News.find({ category: cat })
+      .sort({ pubDate: -1 }); // newest first
+
+    res.json(news.map(article => ({
       ...article._doc,
       timeAgo: getTimeAgo(article.pubDate)
     })));
