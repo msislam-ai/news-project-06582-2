@@ -8,35 +8,24 @@ import cleanNewsData from "../utils/newsCleaner.js";
 import News from "../models/News.js";
 
 /* ===================================================
-   🔧 FUNCTION TO NORMALIZE EACH ARTICLE
+   🔧 Normalize Article Data
 =================================================== */
 function normalizeArticle(item, scrapedContent, image) {
   return {
     title: String(item?.title || ""),
     description: String(item?.shortDescription || ""),
     content: String(
-      scrapedContent ||
-      item?.shortDescription ||
-      item?.title ||
-      ""
+      scrapedContent || item?.shortDescription || item?.title || ""
     ),
-
     image: image || item?.image || null,
     source: String(item?.source || "RSS Feed"),
-
-    // Handle links that could be objects or strings
     url: item?.link?.href || item?.link?._text || String(item?.link || ""),
-
     pubDate: new Date(item?.publishDate || Date.now()),
-
-    // Make sure category is string
     category:
       typeof item?.category === "string"
         ? item.category
         : item?.category?.name || "General",
-
-    // Track last updated time
-    updatedAt: new Date()
+    updatedAt: new Date() // track last update
   };
 }
 
@@ -45,24 +34,23 @@ function normalizeArticle(item, scrapedContent, image) {
 =================================================== */
 export async function fetchAndSaveAllNews() {
   try {
+    console.log("\n======================================");
+    console.log("📰 Starting news aggregation at:", new Date().toISOString());
 
     /* ===================================================
        1️⃣ FETCH RSS NEWS CATEGORY WISE
     ==================================================== */
-    console.log("\n======================================");
-    console.log("📰 Fetching RSS news category-wise...");
+    console.log("📡 Fetching RSS news by category...");
 
     const results = await Promise.all(
-      Object.keys(RSS_SOURCES).map(category =>
-        fetchRSSByCategory(category)
-      )
+      Object.keys(RSS_SOURCES).map(category => fetchRSSByCategory(category))
     );
 
     const rssItems = results.flat();
     console.log(`📰 Total RSS items fetched: ${rssItems.length}`);
 
     /* ===================================================
-       2️⃣ SCRAPE EACH RSS ARTICLE
+       2️⃣ SCRAPE ARTICLES
     ==================================================== */
     console.log("🔍 Scraping articles...");
 
@@ -96,7 +84,7 @@ export async function fetchAndSaveAllNews() {
     );
 
     /* ===================================================
-       3️⃣ FILTER AND CLEAN ARTICLES
+       3️⃣ FILTER + CLEAN ARTICLES
     ==================================================== */
     console.log("🧹 Filtering and cleaning articles...");
 
@@ -112,6 +100,9 @@ export async function fetchAndSaveAllNews() {
     ==================================================== */
     console.log("💾 Saving/updating articles to MongoDB...");
 
+    let addedCount = 0;
+    let updatedCount = 0;
+
     if (cleanedRSS.length > 0) {
 
       const bulkOps = cleanedRSS.map(article => ({
@@ -124,24 +115,37 @@ export async function fetchAndSaveAllNews() {
 
       const result = await News.bulkWrite(bulkOps);
 
-      console.log(`✅ ${result.upsertedCount} new RSS articles added`);
-      console.log(`🔄 ${result.modifiedCount} existing RSS articles updated`);
+      addedCount = result.upsertedCount || 0;
+      updatedCount = result.modifiedCount || 0;
+
+      console.log(`✅ ${addedCount} new RSS articles added`);
+      console.log(`🔄 ${updatedCount} existing RSS articles updated`);
     } else {
       console.log("⚠️ No RSS articles to save/update");
     }
 
     /* ===================================================
-       5️⃣ FETCH AND SAVE NEWS FROM NEWS API
+       5️⃣ FETCH NEWS API
     ==================================================== */
     console.log("🌐 Fetching news from News API...");
 
+    let apiSavedCount = 0;
     try {
-      const apiSaved = await fetchNewsAPI({ limit: 10, lang: "en" });
-      console.log(`✅ ${apiSaved} News API articles saved`);
+      apiSavedCount = await fetchNewsAPI({ limit: 10, lang: "en" });
+      console.log(`✅ ${apiSavedCount} News API articles saved`);
     } catch (apiErr) {
       console.log("❌ News API fetch error:", apiErr.message);
     }
 
+    /* ===================================================
+       6️⃣ SHOW TOTAL ARTICLES IN DB
+    ==================================================== */
+    const totalArticles = await News.countDocuments();
+    console.log("\n📊 Summary this run:");
+    console.log(`   New RSS added:       ${addedCount}`);
+    console.log(`   Existing RSS updated: ${updatedCount}`);
+    console.log(`   News API saved:       ${apiSavedCount}`);
+    console.log(`   Total articles in DB: ${totalArticles}`);
     console.log("======================================\n");
 
   } catch (error) {
