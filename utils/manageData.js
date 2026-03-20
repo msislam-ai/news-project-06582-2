@@ -17,82 +17,36 @@ const clientDB = new MongoClient(MONGO);
    Keyword Maps
 ============================= */
 const keywordMap = {
-
-  politics: [
-    "রাজনীতি","সরকার","মন্ত্রী","প্রধানমন্ত্রী","রাষ্ট্রপতি",
-    "সংসদ","নির্বাচন","ভোট","বিএনপি","আওয়ামী লীগ",
-    "রাজনৈতিক","মিছিল","সমাবেশ"
-  ],
-
-  sports: [
-    "খেলা","ক্রীড়া","ক্রিকেট","ফুটবল","ম্যাচ",
-    "বিশ্বকাপ","গোল","রান","খেলোয়াড়","টুর্নামেন্ট"
-  ],
-
-  entertainment: [
-    "বিনোদন","সিনেমা","চলচ্চিত্র","নাটক","তারকা",
-    "অভিনেতা","অভিনেত্রী","গান","মিউজিক","শোবিজ"
-  ],
-
-  technology: [
-    "প্রযুক্তি","ডিজিটাল","ইন্টারনেট","এআই",
-    "কম্পিউটার","সফটওয়্যার","অ্যাপ","স্টার্টআপ"
-  ],
-
-  national: [
-    "বাংলাদেশ","ঢাকা","একুশে","শহীদ মিনার",
-    "স্বাধীনতা","মুক্তিযুদ্ধ","জাতীয়","দেশব্যাপী"
-  ],
-
-  international: [
-    "আন্তর্জাতিক","বিশ্ব","যুক্তরাষ্ট্র","চীন",
-    "রাশিয়া","ইউক্রেন","জাতিসংঘ","গ্লোবাল"
-  ],
-
-  economy: [
-    "অর্থনীতি","ব্যাংক","ডলার","মুদ্রাস্ফীতি",
-    "বাজার","বাণিজ্য","বাজেট","শেয়ারবাজার"
-  ],
-
-  education: [
-    "শিক্ষা","বিশ্ববিদ্যালয়","স্কুল","কলেজ",
-    "পরীক্ষা","এইচএসসি","এসএসসি","শিক্ষার্থী"
-  ],
-
-  health: [
-    "স্বাস্থ্য","হাসপাতাল","ডাক্তার","রোগী",
-    "ডেঙ্গু","করোনা","চিকিৎসা","টিকা"
-  ]
+  politics: ["রাজনীতি","সরকার","মন্ত্রী","প্রধানমন্ত্রী","রাষ্ট্রপতি","সংসদ","নির্বাচন","ভোট","বিএনপি","আওয়ামী লীগ","রাজনৈতিক","মিছিল","সমাবেশ"],
+  sports: ["খেলা","ক্রীড়া","ক্রিকেট","ফুটবল","ম্যাচ","বিশ্বকাপ","গোল","রান","খেলোয়াড়","টুর্নামেন্ট"],
+  entertainment: ["বিনোদন","সিনেমা","চলচ্চিত্র","নাটক","তারকা","অভিনেতা","অভিনেত্রী","গান","মিউজিক","শোবিজ"],
+  technology: ["প্রযুক্তি","ডিজিটাল","ইন্টারনেট","এআই","কম্পিউটার","সফটওয়্যার","অ্যাপ","স্টার্টআপ"],
+  national: ["বাংলাদেশ","ঢাকা","একুশে","শহীদ মিনার","স্বাধীনতা","মুক্তিযুদ্ধ","জাতীয়","দেশব্যাপী"],
+  international: ["আন্তর্জাতিক","বিশ্ব","যুক্তরাষ্ট্র","চীন","রাশিয়া","ইউক্রেন","জাতিসংঘ","গ্লোবাল"],
+  economy: ["অর্থনীতি","ব্যাংক","ডলার","মুদ্রাস্ফীতি","বাজার","বাণিজ্য","বাজেট","শেয়ারবাজার"],
+  education: ["শিক্ষা","বিশ্ববিদ্যালয়","স্কুল","কলেজ","পরীক্ষা","এইচএসসি","এসএসসি","শিক্ষার্থী"],
+  health: ["স্বাস্থ্য","হাসপাতাল","ডাক্তার","রোগী","ডেঙ্গু","করোনা","চিকিৎসা","টিকা"]
 };
 
 /* =============================
    Normalize Text
 ============================= */
 function normalizeText(text = "") {
-  return text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, "")
-    .normalize("NFC");
+  return text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").normalize("NFC");
 }
 
 /* =============================
-   Smart Keyword Categorizer
+   Keyword-based Categorization
 ============================= */
 function categorizeWithKeywords(textInput) {
-
   const text = normalizeText(textInput);
-
   let scores = {};
 
   for (const [category, keywords] of Object.entries(keywordMap)) {
-    scores[category] = keywords.filter(kw =>
-      text.includes(normalizeText(kw))
-    ).length;
+    scores[category] = keywords.filter(kw => text.includes(normalizeText(kw))).length;
   }
 
-  const best = Object.entries(scores)
-    .sort((a, b) => b[1] - a[1])[0];
-
+  const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
   return best && best[1] > 0 ? best[0] : null;
 }
 
@@ -100,26 +54,12 @@ function categorizeWithKeywords(textInput) {
    AI Categorization (Fallback)
 ============================= */
 async function categorizeWithPuter(text) {
-
   try {
     const response = await puter.ai.chat({
       prompt: `
 You are an expert multilingual news classifier.
-
 Classify the news into EXACTLY ONE category.
-
-Allowed categories:
-politics
-sports
-technology
-entertainment
-national
-international
-economy
-education
-health
-general
-
+Allowed categories: politics, sports, technology, entertainment, national, international, economy, education, health, general
 Rules:
 - Understand Bangla and English
 - Focus on MAIN topic
@@ -136,28 +76,9 @@ ${text}
     });
 
     const raw = response?.toString() || "";
-
-    const cleaned = raw
-      .toLowerCase()
-      .replace(/[^a-z]/g, "")
-      .trim();
-
-    const allowed = [
-      "politics",
-      "sports",
-      "technology",
-      "entertainment",
-      "national",
-      "international",
-      "economy",
-      "education",
-      "health",
-      "general"
-    ];
-
-    return allowed.includes(cleaned)
-      ? cleaned
-      : "general";
+    const cleaned = raw.toLowerCase().replace(/[^a-z]/g, "").trim();
+    const allowed = ["politics","sports","technology","entertainment","national","international","economy","education","health","general"];
+    return allowed.includes(cleaned) ? cleaned : "general";
 
   } catch (error) {
     console.error("AI Categorization Error:", error);
@@ -166,27 +87,12 @@ ${text}
 }
 
 /* =============================
-   Category Safety Mapping
+   Map Category to Allowed Set
 ============================= */
 function mapCategory(cat) {
-
-  const allowed = [
-    "politics",
-    "sports",
-    "technology",
-    "entertainment",
-    "national",
-    "international",
-    "economy",
-    "education",
-    "health",
-    "general"
-  ];
-
+  const allowed = ["politics","sports","technology","entertainment","national","international","economy","education","health","general"];
   if (!cat) return "general";
-
   cat = cat.toLowerCase().trim();
-
   return allowed.includes(cat) ? cat : "general";
 }
 
@@ -194,39 +100,28 @@ function mapCategory(cat) {
    MAIN DATA MANAGER
 ============================= */
 export async function manageData() {
-
   try {
-
     await clientDB.connect();
-
     const db = clientDB.db(DB_NAME);
     const collection = db.collection(COLLECTION_NAME);
-
     console.log("✅ Connected to DB");
 
     /* =============================
-       Delete Old News
+       Delete Old News (5 days ago)
     ============================= */
-const fiveDaysAgo = new Date();
-fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    const fiveDaysAgo = new Date();
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-const deleted = await collection.deleteMany({
-  createdAt: { $exists: true, $lt: fiveDaysAgo }
-});
-
-console.log(`🧹 Old news removed: ${deleted.deletedCount}`);
+    const deleted = await collection.deleteMany({
+      createdAt: { $exists: true, $lt: fiveDaysAgo }
+    });
+    console.log(`🧹 Old news removed: ${deleted.deletedCount}`);
 
     /* =============================
        Remove Duplicate Titles
     ============================= */
     const duplicates = await collection.aggregate([
-      {
-        $group: {
-          _id: "$title",
-          ids: { $push: "$_id" },
-          count: { $sum: 1 }
-        }
-      },
+      { $group: { _id: "$title", ids: { $push: "$_id" }, count: { $sum: 1 } } },
       { $match: { count: { $gt: 1 } } }
     ]).toArray();
 
@@ -234,63 +129,56 @@ console.log(`🧹 Old news removed: ${deleted.deletedCount}`);
       doc.ids.shift();
       await collection.deleteMany({ _id: { $in: doc.ids } });
     }
-
     console.log("🧹 Duplicate news cleaned");
 
-     /* =================================
-   4️⃣ Remove Broken Image News
-=================================*/
-const broken = await collection.deleteMany({
-  $or:[
-    {image:null},
-    {image:""},
-    {image:{$exists:false}},
-    {image:{$regex:/placeholder/i}}
-  ]
-});
+    /* =================================
+       Remove Broken Image News
+    ================================= */
+    const broken = await collection.deleteMany({
+      $or: [
+        { image: null },
+        { image: "" },
+        { image: { $exists: false } },
+        { image: { $regex: /placeholder/i } }
+      ]
+    });
+    console.log("🧹 Broken images removed:", broken.deletedCount);
 
-console.log("🧹 Broken images:",broken.deletedCount);
-
-
-  
     /* =============================
-       Recategorize All News
+       Recategorize All News (Non-destructive)
     ============================= */
     const allNews = await collection.find({}).toArray();
-
     console.log(`🧠 Items to categorize: ${allNews.length}`);
 
     for (const item of allNews) {
+      const currentCategory = mapCategory(item.category);
+      if (currentCategory !== "general") continue; // keep existing if valid
 
-      const combinedText = `
-        ${item.title || ""}
-        ${item.shortDescription || ""}
-      `;
+      const combinedText = `${item.title || ""} ${item.description || ""} ${item.content || ""}`;
 
+      // Keyword first
       let category = categorizeWithKeywords(combinedText);
 
+      // Fallback AI only if keyword fails
       if (!category) {
         category = await categorizeWithPuter(combinedText);
+        if (!keywordMap[category]) category = item.category || "general";
       }
 
       const finalCategory = mapCategory(category);
 
-      await collection.updateOne(
-        { _id: item._id },
-        { $set: { category: finalCategory } }
-      );
-
-      console.log(`✅ ${item.title} → ${finalCategory}`);
+      if (finalCategory !== item.category) {
+        await collection.updateOne({ _id: item._id }, { $set: { category: finalCategory } });
+        console.log(`✅ ${item.title} → ${finalCategory}`);
+      }
     }
 
-    console.log("🎯 All news categorized successfully");
+    console.log("🎯 News recategorization finished (non-destructive)");
 
   } catch (error) {
     console.error("Manage Data Error:", error);
-  }
-  finally {
+  } finally {
     await clientDB.close();
     console.log("🔌 DB Connection Closed");
   }
-
 }
