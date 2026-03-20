@@ -9,10 +9,23 @@ import News from "../models/News.js";
 
 /* ===================================================
    🔧 Normalize Article Data
-   - Ensures category is always string
+   - Ensures category is always a string
    - Adds updatedAt for tracking
 =================================================== */
 function normalizeArticle(item, scrapedContent, image) {
+  // Convert category to string safely
+  let category = "General";
+
+  if (item?.category) {
+    if (typeof item.category === "string") {
+      category = item.category;
+    } else if (typeof item.category === "object" && item.category?.name) {
+      category = String(item.category.name);
+    } else {
+      category = "General";
+    }
+  }
+
   return {
     title: String(item?.title || ""),
     description: String(item?.shortDescription || ""),
@@ -21,10 +34,7 @@ function normalizeArticle(item, scrapedContent, image) {
     source: String(item?.source || "RSS Feed"),
     url: item?.link?.href || item?.link?._text || String(item?.link || ""),
     pubDate: new Date(item?.publishDate || Date.now()),
-    category:
-      typeof item?.category === "string"
-        ? item.category
-        : item?.category?.name || "General",
+    category: category,
     updatedAt: new Date()
   };
 }
@@ -85,6 +95,7 @@ export async function fetchAndSaveAllNews() {
        3️⃣ FILTER + CLEAN ARTICLES
     ==================================================== */
     console.log("🧹 Filtering and cleaning articles...");
+
     const validRSS = rssArticles.filter(a => a && a.url && typeof a.url === "string");
     const cleanedRSS = cleanNewsData(validRSS);
     console.log(`✅ Articles after cleaning: ${cleanedRSS.length}`);
