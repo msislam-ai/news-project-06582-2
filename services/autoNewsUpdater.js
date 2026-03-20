@@ -26,7 +26,7 @@ export function startAutoNewsUpdater() {
   console.log("📰 Auto updater started");
 
   // Run every 10 minutes
-  cron.schedule("*/10 * * * *", async () => {
+  cron.schedule("* * * * *", async () => {
     const startTime = new Date();
     console.log("\n======================================");
     console.log("🔄 Auto updating news at:", startTime.toISOString());
