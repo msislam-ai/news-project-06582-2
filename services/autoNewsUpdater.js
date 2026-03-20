@@ -8,6 +8,20 @@ import { fetchAndSaveNews } from "./newsAPIService.js";
 import News from "../models/News.js";
 import cleanNewsData from "../utils/newsCleaner.js";
 
+/* ======================
+   🔧 Normalize category safely
+====================== */
+function normalizeCategory(category) {
+  if (!category) return "General"; // null/undefined
+  if (typeof category === "string") return category;
+  if (typeof category === "object") {
+    if (category.name) return String(category.name);
+    // fallback for any other object
+    return JSON.stringify(category).slice(0, 50); // limit length
+  }
+  return String(category);
+}
+
 export function startAutoNewsUpdater() {
   console.log("📰 Auto updater started");
 
@@ -26,7 +40,6 @@ export function startAutoNewsUpdater() {
       const results = await Promise.all(
         Object.keys(RSS_SOURCES).map((cat) => fetchRSSByCategory(cat))
       );
-
       const rssItems = results.flat();
       console.log(`📰 RSS fetched: ${rssItems.length}`);
 
@@ -40,7 +53,6 @@ export function startAutoNewsUpdater() {
 
             let content = null;
             let image = null;
-
             try {
               const scraped = await scrapeArticle(item.link);
               content = scraped?.content || null;
@@ -48,12 +60,6 @@ export function startAutoNewsUpdater() {
             } catch (scrapeErr) {
               console.log("⚠️ Scraper failed:", scrapeErr.message);
             }
-
-            // ✅ Normalize category to string to avoid Mongo errors
-            const category =
-              typeof item?.category === "string"
-                ? item.category
-                : item?.category?.name || "General";
 
             return {
               title: item.title,
@@ -63,7 +69,7 @@ export function startAutoNewsUpdater() {
               source: item.source || "RSS",
               url: item.link,
               pubDate: item.publishDate || new Date(),
-              category: category,
+              category: normalizeCategory(item.category), // 🔥 fixed
               referenceType: "rss",
               updatedAt: new Date(),
             };
@@ -108,24 +114,6 @@ export function startAutoNewsUpdater() {
 
         console.log(`✅ New inserted: ${result.upsertedCount}`);
         console.log(`♻️ Updated existing: ${result.modifiedCount}`);
-
-        // 🔥 Show sample updated news
-        const sampleArticles = cleanedArticles.slice(0, 5);
-        console.log("\n📰 Sample updated news:");
-        sampleArticles.forEach((a, i) => {
-          console.log(
-            `${i + 1}. ${a.title}\n   ⏱ ${new Date().toISOString()}\n   🔗 ${a.url}\n   🏷 Category: ${a.category}`
-          );
-        });
-
-        // 📊 Summary
-        console.log("📊 SUMMARY:");
-        console.log({
-          totalFetched: rssItems.length,
-          cleaned: cleanedArticles.length,
-          inserted: result.upsertedCount,
-          updated: result.modifiedCount,
-        });
       } else {
         console.log("⚠️ No cleaned articles to save");
       }
