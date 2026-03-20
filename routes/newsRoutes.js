@@ -12,7 +12,7 @@ const router = express.Router();
 const NEWS_API_KEY = process.env.NEWS_API_KEY;
 
 // =======================
-// 1️⃣ Fetch & Update Latest News (RSS + Scraper + AI + NewsAPI)
+// 1️⃣ Fetch & Update Latest News (OPTIMIZED)
 // =======================
 router.get("/update", async (req, res) => {
   try {
@@ -26,9 +26,10 @@ router.get("/update", async (req, res) => {
         rssItems.slice(0, 5).map(async (item) => {
           const { content: scrapedContent, image } = await scrapeArticle(item.link);
 
-          const referenceText = scrapedContent?.length > 150
-            ? scrapedContent
-            : item.shortDescription || item.title;
+          const referenceText =
+            scrapedContent?.length > 150
+              ? scrapedContent
+              : item.shortDescription || item.title;
 
           let aiContent = null;
           try {
@@ -38,11 +39,15 @@ router.get("/update", async (req, res) => {
           return {
             title: item.title,
             description: item.shortDescription,
-            content: aiContent || scrapedContent || item.shortDescription || item.title,
+            content:
+              aiContent ||
+              scrapedContent ||
+              item.shortDescription ||
+              item.title,
             image: image || null,
             source: item.source,
             url: item.link,
-            pubDate: item.publishDate,
+            publishedAt: new Date(item.publishDate), // ✅ FIXED
             category: category,
             referenceType: scrapedContent ? "scraper" : "rss"
           };
@@ -60,34 +65,42 @@ router.get("/update", async (req, res) => {
         );
 
         if (data.articles?.length) {
-          const apiArticles = data.articles.map(item => ({
+          const apiArticles = data.articles.map((item) => ({
             title: item.title,
             description: item.description,
             content: item.content,
             image: item.image,
             source: item.source.name,
             url: item.url,
-            pubDate: item.publishedAt,
+            publishedAt: new Date(item.publishedAt), // ✅ FIXED
+            category: "general",
             referenceType: "newsapi"
           }));
+
           allArticles.push(...apiArticles);
         }
       } catch (apiErr) {
-        console.log("News API fetch error:", apiErr.response?.data || apiErr.message);
+        console.log(
+          "News API fetch error:",
+          apiErr.response?.data || apiErr.message
+        );
       }
     }
 
-    // --- Clean & Categorize ---
+    // --- Clean ---
     const cleanedArticles = cleanNewsData(allArticles);
 
-    // --- Save to DB (avoid duplicates) ---
+    // --- Save (FAST + NO DUPLICATES) ---
     let savedCount = 0;
-    for (const article of cleanedArticles) {
-      const exists = await News.findOne({ url: article.url });
-      if (!exists) {
-        await News.create(article);
-        savedCount++;
-      }
+
+    try {
+      const result = await News.insertMany(cleanedArticles, {
+        ordered: false // skip duplicates automatically
+      });
+      savedCount = result.length;
+    } catch (err) {
+      // ignore duplicate errors
+      savedCount = err.result?.nInserted || 0;
     }
 
     res.json({
@@ -103,18 +116,19 @@ router.get("/update", async (req, res) => {
 });
 
 // =======================
-// 2️⃣ Get All News (paginated, newest first)
+// 2️⃣ Get All News (FAST + CORRECT ORDER)
 // =======================
 router.get("/all", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 100;
+    const limit = Math.min(parseInt(req.query.limit) || 10, 20);
     const skip = (page - 1) * limit;
 
     const news = await News.find({})
-      .sort({ pubDate: -1 })  // newest first
+      .sort({ publishedAt: -1, createdAt: -1 }) // ✅ FIXED
       .skip(skip)
-      .limit(limit);
+      .limit(limit)
+      .lean(); // ✅ SPEED BOOST
 
     const total = await News.countDocuments();
 
@@ -123,9 +137,9 @@ router.get("/all", async (req, res) => {
       limit,
       total,
       totalPages: Math.ceil(total / limit),
-      data: news.map(article => ({
-        ...article._doc,
-        timeAgo: getTimeAgo(article.pubDate)
+      data: news.map((article) => ({
+        ...article,
+        timeAgo: getTimeAgo(article.publishedAt) // ✅ FIXED
       }))
     });
   } catch (error) {
@@ -135,18 +149,22 @@ router.get("/all", async (req, res) => {
 });
 
 // =======================
-// 3️⃣ Get News by Category (newest first)
+// 3️⃣ Get News by Category
 // =======================
 router.get("/category/:cat", async (req, res) => {
   try {
     const { cat } = req.params;
-    const news = await News.find({ category: cat })
-      .sort({ pubDate: -1 }); // newest first
 
-    res.json(news.map(article => ({
-      ...article._doc,
-      timeAgo: getTimeAgo(article.pubDate)
-    })));
+    const news = await News.find({ category: cat })
+      .sort({ publishedAt: -1, createdAt: -1 })
+      .lean();
+
+    res.json(
+      news.map((article) => ({
+        ...article,
+        timeAgo: getTimeAgo(article.publishedAt)
+      }))
+    );
   } catch (error) {
     console.log("Get Category News Error:", error.message);
     res.status(500).json({ error: "Failed to fetch news by category" });
@@ -154,15 +172,21 @@ router.get("/category/:cat", async (req, res) => {
 });
 
 // =======================
-// 4️⃣ Get Single Article by ID
+// 4️⃣ Get Single Article
 // =======================
 router.get("/article/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const article = await News.findById(id);
-    if (!article) return res.status(404).json({ error: "Article not found" });
 
-    res.json({ ...article._doc, timeAgo: getTimeAgo(article.pubDate) });
+    const article = await News.findById(id).lean();
+
+    if (!article)
+      return res.status(404).json({ error: "Article not found" });
+
+    res.json({
+      ...article,
+      timeAgo: getTimeAgo(article.publishedAt)
+    });
   } catch (error) {
     console.log("Get Article Error:", error.message);
     res.status(500).json({ error: "Failed to fetch article" });
@@ -172,8 +196,10 @@ router.get("/article/:id", async (req, res) => {
 // =======================
 // Time Ago Helper
 // =======================
-function getTimeAgo(pubDate) {
-  const diff = Date.now() - new Date(pubDate).getTime();
+function getTimeAgo(date) {
+  if (!date) return "";
+
+  const diff = Date.now() - new Date(date).getTime();
 
   const minutes = Math.floor(diff / 60000);
   if (minutes < 60) return `${minutes} minutes ago`;
