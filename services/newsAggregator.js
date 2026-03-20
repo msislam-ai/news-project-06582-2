@@ -9,14 +9,14 @@ import News from "../models/News.js";
 
 /* ===================================================
    🔧 Normalize Article Data
+   - Ensures category is always string
+   - Adds updatedAt for tracking
 =================================================== */
 function normalizeArticle(item, scrapedContent, image) {
   return {
     title: String(item?.title || ""),
     description: String(item?.shortDescription || ""),
-    content: String(
-      scrapedContent || item?.shortDescription || item?.title || ""
-    ),
+    content: String(scrapedContent || item?.shortDescription || item?.title || ""),
     image: image || item?.image || null,
     source: String(item?.source || "RSS Feed"),
     url: item?.link?.href || item?.link?._text || String(item?.link || ""),
@@ -25,7 +25,7 @@ function normalizeArticle(item, scrapedContent, image) {
       typeof item?.category === "string"
         ? item.category
         : item?.category?.name || "General",
-    updatedAt: new Date() // track last update
+    updatedAt: new Date()
   };
 }
 
@@ -47,12 +47,12 @@ export async function fetchAndSaveAllNews() {
     );
 
     const rssItems = results.flat();
-    console.log(`📰 Total RSS items fetched: ${rssItems.length}`);
+    console.log(`📰 Total RSS items fetched from RSS: ${rssItems.length}`);
 
     /* ===================================================
        2️⃣ SCRAPE ARTICLES
     ==================================================== */
-    console.log("🔍 Scraping articles...");
+    console.log("🔍 Scraping RSS articles...");
 
     const rssArticles = await Promise.all(
       rssItems.map(async (item) => {
@@ -66,12 +66,10 @@ export async function fetchAndSaveAllNews() {
             const scraped = await scrapeArticle(
               item?.link?.href || item?.link?._text || String(item?.link)
             );
-
             scrapedContent = scraped?.content || null;
             image = scraped?.image || null;
-
           } catch (scrapeErr) {
-            console.log("❌ Scraper failed for URL:", item?.link, scrapeErr.message);
+            console.log("⚠️ Scraper failed for URL:", item?.link, scrapeErr.message);
           }
 
           return normalizeArticle(item, scrapedContent, image);
@@ -87,11 +85,7 @@ export async function fetchAndSaveAllNews() {
        3️⃣ FILTER + CLEAN ARTICLES
     ==================================================== */
     console.log("🧹 Filtering and cleaning articles...");
-
-    const validRSS = rssArticles.filter(
-      a => a && a.url && typeof a.url === "string"
-    );
-
+    const validRSS = rssArticles.filter(a => a && a.url && typeof a.url === "string");
     const cleanedRSS = cleanNewsData(validRSS);
     console.log(`✅ Articles after cleaning: ${cleanedRSS.length}`);
 
@@ -104,7 +98,6 @@ export async function fetchAndSaveAllNews() {
     let updatedCount = 0;
 
     if (cleanedRSS.length > 0) {
-
       const bulkOps = cleanedRSS.map(article => ({
         updateOne: {
           filter: { url: article.url },
@@ -120,6 +113,15 @@ export async function fetchAndSaveAllNews() {
 
       console.log(`✅ ${addedCount} new RSS articles added`);
       console.log(`🔄 ${updatedCount} existing RSS articles updated`);
+
+      // 🔥 Show first 5 sample articles
+      const sampleArticles = cleanedRSS.slice(0, 5);
+      console.log("\n📰 Sample updated articles:");
+      sampleArticles.forEach((a, i) => {
+        console.log(
+          `${i + 1}. ${a.title}\n   🔗 ${a.url}\n   🏷 Category: ${a.category}\n   ⏱ UpdatedAt: ${a.updatedAt.toISOString()}\n`
+        );
+      });
     } else {
       console.log("⚠️ No RSS articles to save/update");
     }
@@ -128,7 +130,6 @@ export async function fetchAndSaveAllNews() {
        5️⃣ FETCH NEWS API
     ==================================================== */
     console.log("🌐 Fetching news from News API...");
-
     let apiSavedCount = 0;
     try {
       apiSavedCount = await fetchNewsAPI({ limit: 10, lang: "en" });
@@ -141,8 +142,8 @@ export async function fetchAndSaveAllNews() {
        6️⃣ SHOW TOTAL ARTICLES IN DB
     ==================================================== */
     const totalArticles = await News.countDocuments();
-    console.log("\n📊 Summary this run:");
-    console.log(`   New RSS added:       ${addedCount}`);
+    console.log("\n📊 SUMMARY THIS RUN:");
+    console.log(`   New RSS added:        ${addedCount}`);
     console.log(`   Existing RSS updated: ${updatedCount}`);
     console.log(`   News API saved:       ${apiSavedCount}`);
     console.log(`   Total articles in DB: ${totalArticles}`);
