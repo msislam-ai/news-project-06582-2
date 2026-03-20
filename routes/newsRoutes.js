@@ -6,13 +6,18 @@ import cleanNewsData from "../utils/newsCleaner.js";
 import axios from "axios";
 import { fetchRSSByCategory } from "../services/rssService.js";
 import { RSS_SOURCES } from "../config/rssSources.js";
+import NodeCache from "node-cache";
 
 const router = express.Router();
-
 const NEWS_API_KEY = process.env.NEWS_API_KEY;
 
 // =======================
-// 1️⃣ Fetch & Update Latest News (OPTIMIZED)
+// Cache setup (optional, huge speed boost)
+// =======================
+const cache = new NodeCache({ stdTTL: 60 }); // cache for 60 seconds
+
+// =======================
+// 1️⃣ Fetch & Update Latest News
 // =======================
 router.get("/update", async (req, res) => {
   try {
@@ -40,14 +45,11 @@ router.get("/update", async (req, res) => {
             title: item.title,
             description: item.shortDescription,
             content:
-              aiContent ||
-              scrapedContent ||
-              item.shortDescription ||
-              item.title,
+              aiContent || scrapedContent || item.shortDescription || item.title,
             image: image || null,
             source: item.source,
             url: item.link,
-            publishedAt: new Date(item.publishDate), // ✅ FIXED
+            publishedAt: new Date(item.publishDate), // correct field
             category: category,
             referenceType: scrapedContent ? "scraper" : "rss"
           };
@@ -72,7 +74,7 @@ router.get("/update", async (req, res) => {
             image: item.image,
             source: item.source.name,
             url: item.url,
-            publishedAt: new Date(item.publishedAt), // ✅ FIXED
+            publishedAt: new Date(item.publishedAt),
             category: "general",
             referenceType: "newsapi"
           }));
@@ -92,14 +94,10 @@ router.get("/update", async (req, res) => {
 
     // --- Save (FAST + NO DUPLICATES) ---
     let savedCount = 0;
-
     try {
-      const result = await News.insertMany(cleanedArticles, {
-        ordered: false // skip duplicates automatically
-      });
+      const result = await News.insertMany(cleanedArticles, { ordered: false });
       savedCount = result.length;
     } catch (err) {
-      // ignore duplicate errors
       savedCount = err.result?.nInserted || 0;
     }
 
@@ -116,7 +114,7 @@ router.get("/update", async (req, res) => {
 });
 
 // =======================
-// 2️⃣ Get All News (FAST + CORRECT ORDER)
+// 2️⃣ Get All News (fast + paginated)
 // =======================
 router.get("/all", async (req, res) => {
   try {
@@ -124,24 +122,39 @@ router.get("/all", async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 10, 20);
     const skip = (page - 1) * limit;
 
-    const news = await News.find({})
-      .sort({ publishedAt: -1, createdAt: -1 }) // ✅ FIXED
+    const cacheKey = `news_${page}_${limit}`;
+    if (cache.has(cacheKey)) {
+      return res.json(cache.get(cacheKey));
+    }
+
+    const news = await News.find({}, {
+      title: 1,
+      description: 1,
+      image: 1,
+      category: 1,
+      publishedAt: 1
+    })
+      .sort({ publishedAt: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .lean(); // ✅ SPEED BOOST
+      .lean();
 
     const total = await News.countDocuments();
 
-    res.json({
+    const response = {
       page,
       limit,
       total,
       totalPages: Math.ceil(total / limit),
       data: news.map((article) => ({
         ...article,
-        timeAgo: getTimeAgo(article.publishedAt) // ✅ FIXED
+        timeAgo: getTimeAgo(article.publishedAt)
       }))
-    });
+    };
+
+    cache.set(cacheKey, response);
+
+    res.json(response);
   } catch (error) {
     console.log("Get All News Error:", error.message);
     res.status(500).json({ error: "Failed to fetch news" });
@@ -155,7 +168,13 @@ router.get("/category/:cat", async (req, res) => {
   try {
     const { cat } = req.params;
 
-    const news = await News.find({ category: cat })
+    const news = await News.find({ category: cat }, {
+      title: 1,
+      description: 1,
+      image: 1,
+      category: 1,
+      publishedAt: 1
+    })
       .sort({ publishedAt: -1, createdAt: -1 })
       .lean();
 
