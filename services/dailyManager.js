@@ -1,25 +1,36 @@
+// backend/services/dailyManager.js
+
 import cron from "node-cron";
 import { manageData } from "../utils/manageData.js";
 
 export function startDailyManager() {
 
-  // run immediately when server starts
+  // ✅ Run immediately when server starts
   runManager();
 
-  // run once every 24 hours
-  cron.schedule("0 */24 * * *", async () => {
+  // ✅ Run every 3 minutes
+  cron.schedule("*/3 * * * *", async () => {
     await runManager();
   });
 
-  console.log("📅 Daily manager scheduled (every 24 hours)");
+  console.log("📅 Daily manager scheduled (every 3 minutes)");
 }
 
 async function runManager() {
-  console.log("🧠 Running daily DB manager...");
+  const startTime = new Date();
+  console.log("\n======================================");
+  console.log(`🧠 Running DB manager at: ${startTime.toISOString()}`);
 
   try {
-    await manageData();
-    console.log("✅ DB management completed");
+    const result = await manageData();
+
+    // 🔥 Show result in log
+    console.log("📊 DB manager result:", result);
+
+    const endTime = new Date();
+    console.log(`✅ DB management completed at: ${endTime.toISOString()}`);
+    console.log("======================================\n");
+
   } catch (err) {
     console.error("❌ Daily manager error:", err);
   }
