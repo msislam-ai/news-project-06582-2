@@ -119,7 +119,7 @@ router.get("/update", async (req, res) => {
 router.get("/all", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = Math.min(parseInt(req.query.limit) || 10, 20);
+    const limit = Math.min(parseInt(req.query.limit) || 10, 100);
     const skip = (page - 1) * limit;
 
     const cacheKey = `news_${page}_${limit}`;
