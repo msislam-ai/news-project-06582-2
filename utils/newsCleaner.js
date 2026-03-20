@@ -178,89 +178,18 @@ const categoryKeywords = {
   ],
 
   "আরও": [
-    // Entertainment
+    // Entertainment, Technology, Economy, Education, Health, Lifestyle
     { word: "বিনোদন", weight: 2 },
-    { word: "সিনেমা", weight: 2 },
-    { word: "চলচ্চিত্র", weight: 2 },
-    { word: "নাটক", weight: 2 },
-    { word: "তারকা", weight: 2 },
-    { word: "অভিনেতা", weight: 2 },
-    { word: "অভিনেত্রী", weight: 2 },
-    { word: "গান", weight: 1 },
-    { word: "মিউজিক", weight: 1 },
-    { word: "শোবিজ", weight: 1 },
-    { word: "টিভি", weight: 1 },
-    { word: "ওটিটি", weight: 1 },
-
-    // Technology
     { word: "প্রযুক্তি", weight: 2 },
-    { word: "ডিজিটাল", weight: 1 },
-    { word: "এআই", weight: 2 },
-    { word: "কৃত্রিম বুদ্ধিমত্তা", weight: 2 },
-    { word: "ইন্টারনেট", weight: 2 },
-    { word: "মোবাইল", weight: 1 },
-    { word: "স্মার্টফোন", weight: 1 },
-    { word: "অ্যাপ", weight: 1 },
-    { word: "সফটওয়্যার", weight: 1 },
-    { word: "স্টার্টআপ", weight: 2 },
-    { word: "সাইবার", weight: 1 },
-    { word: "রোবট", weight: 1 },
-    { word: "ডেটা", weight: 1 },
-    { word: "টেক", weight: 1 },
-
-    // Economy
     { word: "অর্থনীতি", weight: 2 },
-    { word: "ব্যাংক", weight: 1 },
-    { word: "ডলার", weight: 1 },
-    { word: "টাকা", weight: 1 },
-    { word: "মুদ্রাস্ফীতি", weight: 1 },
-    { word: "বাজার", weight: 2 },
-    { word: "শেয়ারবাজার", weight: 2 },
-    { word: "বাণিজ্য", weight: 1 },
-    { word: "বাজেট", weight: 1 },
-    { word: "রপ্তানি", weight: 1 },
-    { word: "আমদানি", weight: 1 },
-
-    // Education
     { word: "শিক্ষা", weight: 2 },
-    { word: "বিশ্ববিদ্যালয়", weight: 1 },
-    { word: "স্কুল", weight: 1 },
-    { word: "কলেজ", weight: 1 },
-    { word: "শিক্ষার্থী", weight: 1 },
-    { word: "পরীক্ষা", weight: 1 },
-    { word: "এইচএসসি", weight: 1 },
-    { word: "এসএসসি", weight: 1 },
-    { word: "ভর্তি", weight: 1 },
-    { word: "রেজাল্ট", weight: 1 },
-    { word: "ক্লাস", weight: 1 },
-
-    // Health
     { word: "স্বাস্থ্য", weight: 2 },
-    { word: "হাসপাতাল", weight: 1 },
-    { word: "ডাক্তার", weight: 1 },
-    { word: "রোগী", weight: 1 },
-    { word: "চিকিৎসা", weight: 1 },
-    { word: "ডেঙ্গু", weight: 1 },
-    { word: "করোনা", weight: 1 },
-    { word: "ভাইরাস", weight: 1 },
-    { word: "টিকা", weight: 1 },
-    { word: "স্বাস্থ্যসেবা", weight: 1 },
-
-    // Lifestyle
-    { word: "লাইফস্টাইল", weight: 1 },
-    { word: "ভ্রমণ", weight: 1 },
-    { word: "ফ্যাশন", weight: 1 },
-    { word: "খাবার", weight: 1 },
-    { word: "রেসিপি", weight: 1 },
-    { word: "জীবনযাপন", weight: 1 },
-    { word: "ফিটনেস", weight: 1 },
-    { word: "ডায়েট", weight: 1 },
-    { word: "পৌরসেবা", weight: 1 }
+    { word: "লাইফস্টাইল", weight: 1 }
   ]
 };
 
 /* ===================================================
-   CATEGORY DETECTION WITH WEIGHTS & CONFIDENCE
+   CATEGORY DETECTION
 =================================================== */
 function categorizeArticle(article) {
   const text = normalizeText(`${article.title} ${article.description}`);
@@ -285,11 +214,7 @@ function categorizeArticle(article) {
     }
   }
 
-  const confidence = totalScore ? (bestScore / totalScore).toFixed(2) : 0;
-
-  console.log(`🧠 Categorized: ${article.title} → ${bestCategory} (Confidence: ${confidence})`);
-
-  return { name: bestCategory, confidence: Number(confidence) };
+  return bestCategory; // <-- always return a string
 }
 
 /* ===================================================
@@ -298,9 +223,7 @@ function categorizeArticle(article) {
 function isSimilar(title1, title2) {
   const t1 = normalizeText(title1);
   const t2 = normalizeText(title2);
-  if (t1 === t2) return true;
-  if (t1.includes(t2) || t2.includes(t1)) return true;
-  return false;
+  return t1 === t2 || t1.includes(t2) || t2.includes(t1);
 }
 
 function removeDuplicates(newsArray) {
@@ -323,10 +246,9 @@ function cleanArticle(article = {}) {
     image: article.image || "https://via.placeholder.com/300",
     source: safeString(article.source || "Unknown"),
     url: safeString(article.url || article.link || ""),
-    publishedAt: formatDate(article.pubDate || article.publishedAt)
+    publishedAt: formatDate(article.pubDate || article.publishedAt),
+    category: categorizeArticle(article) // <-- now string
   };
-
-  cleaned.category = categorizeArticle(cleaned);
 
   return cleaned;
 }
