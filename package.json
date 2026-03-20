@@ -23,6 +23,7 @@
     "puterjs": "^2.0.0",
     "helmet": "^7.0.0",
     "compression": "^1.7.4",
+    "p-limit": "^4.0.0",
     "rss-parser": "^3.13.0"
   }
 }
