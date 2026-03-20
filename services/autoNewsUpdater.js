@@ -23,11 +23,8 @@ export function startAutoNewsUpdater() {
       /* ======================
          1️⃣ FETCH RSS CATEGORY WISE
       ====================== */
-
       const results = await Promise.all(
-        Object.keys(RSS_SOURCES).map((cat) =>
-          fetchRSSByCategory(cat)
-        )
+        Object.keys(RSS_SOURCES).map((cat) => fetchRSSByCategory(cat))
       );
 
       const rssItems = results.flat();
@@ -36,7 +33,6 @@ export function startAutoNewsUpdater() {
       /* ======================
          2️⃣ SCRAPE RSS ARTICLES
       ====================== */
-
       const rssArticles = await Promise.all(
         rssItems.map(async (item) => {
           try {
@@ -53,22 +49,22 @@ export function startAutoNewsUpdater() {
               console.log("⚠️ Scraper failed:", scrapeErr.message);
             }
 
+            // ✅ Normalize category to string to avoid Mongo errors
+            const category =
+              typeof item?.category === "string"
+                ? item.category
+                : item?.category?.name || "General";
+
             return {
               title: item.title,
               description: item.shortDescription,
-              content:
-                content ||
-                item.shortDescription ||
-                item.title,
-
+              content: content || item.shortDescription || item.title,
               image: image || item.image || null,
               source: item.source || "RSS",
               url: item.link,
               pubDate: item.publishDate || new Date(),
-              category: item.category || "General",
+              category: category,
               referenceType: "rss",
-
-              // ✅ Track update time
               updatedAt: new Date(),
             };
           } catch (err) {
@@ -83,7 +79,6 @@ export function startAutoNewsUpdater() {
       /* ======================
          3️⃣ FETCH NEWS API
       ====================== */
-
       try {
         const apiSaved = await fetchAndSaveNews({ limit: 10 });
         console.log(`✅ NewsAPI fetched ${apiSaved} articles`);
@@ -94,24 +89,17 @@ export function startAutoNewsUpdater() {
       /* ======================
          4️⃣ CLEAN DATA
       ====================== */
-
       const cleanedArticles = cleanNewsData(allArticles);
       console.log(`🧹 Cleaned articles: ${cleanedArticles.length}`);
 
       /* ======================
          5️⃣ BULK UPSERT DB
       ====================== */
-
       if (cleanedArticles.length > 0) {
         const operations = cleanedArticles.map((article) => ({
           updateOne: {
             filter: { url: article.url },
-            update: {
-              $set: {
-                ...article,
-                updatedAt: new Date(), // always refresh time
-              },
-            },
+            update: { $set: { ...article, updatedAt: new Date() } },
             upsert: true,
           },
         }));
@@ -121,23 +109,16 @@ export function startAutoNewsUpdater() {
         console.log(`✅ New inserted: ${result.upsertedCount}`);
         console.log(`♻️ Updated existing: ${result.modifiedCount}`);
 
-        /* ======================
-           🔥 SHOW SAMPLE UPDATED NEWS
-        ====================== */
-
+        // 🔥 Show sample updated news
         const sampleArticles = cleanedArticles.slice(0, 5);
-
         console.log("\n📰 Sample updated news:");
         sampleArticles.forEach((a, i) => {
           console.log(
-            `${i + 1}. ${a.title}\n   ⏱ ${new Date().toISOString()}\n   🔗 ${a.url}\n`
+            `${i + 1}. ${a.title}\n   ⏱ ${new Date().toISOString()}\n   🔗 ${a.url}\n   🏷 Category: ${a.category}`
           );
         });
 
-        /* ======================
-           📊 SUMMARY
-        ====================== */
-
+        // 📊 Summary
         console.log("📊 SUMMARY:");
         console.log({
           totalFetched: rssItems.length,
@@ -145,7 +126,6 @@ export function startAutoNewsUpdater() {
           inserted: result.upsertedCount,
           updated: result.modifiedCount,
         });
-
       } else {
         console.log("⚠️ No cleaned articles to save");
       }
@@ -153,7 +133,6 @@ export function startAutoNewsUpdater() {
       const endTime = new Date();
       console.log("⏱ Last update finished at:", endTime.toISOString());
       console.log("======================================\n");
-
     } catch (error) {
       console.log("❌ Auto updater error:", error.message);
     }
