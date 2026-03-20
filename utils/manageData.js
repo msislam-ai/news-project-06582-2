@@ -250,7 +250,26 @@ const broken = await collection.deleteMany({
 });
 
 console.log("🧹 Broken images:",broken.deletedCount);
-     
+
+
+     /* =============================
+   REARRANGE NEWS BY PUBDATE
+============================= */
+console.log("📅 Rearranging news by pubDate...");
+
+// Fetch all news sorted by pubDate descending
+const sortedNews = await collection.find({}).sort({ pubDate: -1 }).toArray();
+
+// Update each news with a new internal "order" field if needed
+// (optional: ensures order is kept if you fetch without $sort)
+for (let i = 0; i < sortedNews.length; i++) {
+  await collection.updateOne(
+    { _id: sortedNews[i]._id },
+    { $set: { orderIndex: i } }
+  );
+}
+
+console.log("✅ Database rearranged by pubDate descending");
 
     /* =============================
        Recategorize All News
