@@ -1,7 +1,7 @@
 import express from "express";
 import puterAIService from "../services/aiService.js";
 import News from "../models/News.js";
-import cleanNewsData from "../utils/newsCleaner.js";
+import { cleanNewsData, categorizeArticle, addCategory } from "../utils/newsCleaner.js";
 import axios from "axios";
 import { fetchRSSByCategory } from "../services/rssService.js";
 import { RSS_SOURCES } from "../config/rssSources.js";
