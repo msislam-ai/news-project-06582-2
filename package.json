@@ -1,50 +1,126 @@
 {
   "name": "bangla-news-backend",
   "version": "1.0.0",
-  "description": "Backend for Bangla News AI system with rewriting, summarization, scraping, and auto-updater",
-  "main": "index.js",
+  "description": "Production-ready Bangla news aggregation backend with AI rewriting, smart categorization, RSS/NewsAPI integration, and auto-updater",
+  "main": "src/index.js",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
-    "lint": "eslint .",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "dev:verbose": "nodemon src/index.js --trace-warnings",
+    "lint": "eslint src/**/*.js",
+    "lint:fix": "eslint src/**/*.js --fix",
+    "format": "prettier --write \"src/**/*.js\"",
+    "test": "node --test tests/**/*.test.js",
+    "test:watch": "node --test --watch tests/**/*.test.js",
+    "test:coverage": "c8 node --test tests/**/*.test.js",
+    "db:migrate": "node src/scripts/migrate-db.js",
+    "db:seed": "node src/scripts/seed-categories.js",
+    "news:update": "node src/scripts/trigger-update.js",
+    "news:clean": "node src/scripts/clean-database.js",
+    "build": "echo 'ESM project - no build step required'",
+    "prepare": "husky || true",
+    "postinstall": "node src/scripts/postinstall-check.js"
   },
   "keywords": [
     "bangla",
+    "bengali",
     "news",
     "AI",
     "NLP",
-    "scraper",
-    "auto-update",
-    "puter.js",
-    "rewriter",
-    "summarizer"
+    "aggregator",
+    "puter",
+    "rss",
+    "mongodb",
+    "express",
+    "auto-update"
   ],
-  "author": "Sadekul Islam",
+  "author": {
+    "name": "Sadekul Islam",
+    "email": "sadekul@example.com",
+    "url": "https://github.com/sadekul"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/bangla-news-backend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/bangla-news-backend/issues"
+  },
+  "homepage": "https://github.com/yourusername/bangla-news-backend#readme",
   "dependencies": {
-    "@heyputer/puter.js": "^2.2.8",
-    "axios": "^1.13.4",
-    "cheerio": "^1.2.0",
-    "cors": "^2.8.6",
-    "dotenv": "^17.2.4",
-    "express": "^5.2.1",
-    "mongoose": "^9.1.6",
-    "node-cron": "^4.2.1",
-    "playwright": "^1.58.2",
-    "puterjs": "^2.0.0",
-    "helmet": "^7.0.0",
+    "express": "^4.18.2",
+    "mongoose": "^8.0.0",
+    "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "helmet": "^7.1.0",
     "compression": "^1.7.4",
-    "p-limit": "^4.0.0",
+    "express-rate-limit": "^7.1.5",
     "node-cache": "^5.1.2",
+    "node-cron": "^3.0.3",
+    "p-limit": "^5.0.0",
     "rss-parser": "^3.13.0",
+    
+    "zod": "^3.22.4",
+    
+    "@heyputer/puter.js": "^2.2.8",
+    
     "bangla-stemmer": "^1.0.2",
-    "@xenova/transformers": "^2.4.0",
-    "express-rate-limit": "^7.0.0"
+    "@xenova/transformers": "^2.14.0",
+    
+    "winston": "^3.11.0",
+    "morgan": "^1.10.0"
+  },
+  "optionalDependencies": {
+    "@bnlp/nlp-toolkit": "^0.1.5",
+    "onnxruntime-node": "^1.16.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
-    "eslint": "^8.48.0"
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "prettier": "^3.1.1",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.2.0",
+    "c8": "^9.1.0",
+    "supertest": "^6.3.3"
+  },
+  "lint-staged": {
+    "src/**/*.js": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  },
+  "eslintConfig": {
+    "root": true,
+    "env": {
+      "node": true,
+      "es2022": true
+    },
+    "extends": [
+      "eslint:recommended",
+      "prettier"
+    ],
+    "parserOptions": {
+      "ecmaVersion": "latest",
+      "sourceType": "module"
+    },
+    "rules": {
+      "no-console": "warn",
+      "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
+    }
+  },
+  "prettier": {
+    "semi": true,
+    "singleQuote": false,
+    "trailingComma": "none",
+    "printWidth": 100
   }
 }
