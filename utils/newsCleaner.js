@@ -1075,40 +1075,10 @@ function getAnalytics() {
   };
 }
 
-/* ===================================================
-   🎁 DYNAMIC CONFIGURATION HELPERS (Defined as Functions)
-=================================================== */
-
-/**
- * Add a new category dynamically
- */
-export function addCategory(name, config) {
-  if (!name || !config) return;
-  categoryKeywords[name] = config;
-  keywordEngine._compilePatterns();
-  console.log(`✅ Added category: ${name}`);
-}
-
-/**
- * Update keyword weight for a category
- */
-export function updateKeywordWeight(category, keyword, newWeight) {
-  const cat = categoryKeywords[category];
-  if (!cat?.keywords) return;
-  
-  const kw = cat.keywords.find(k => k.word === keyword);
-  if (kw) {
-    kw.weight = newWeight;
-    console.log(`✅ Updated weight: ${keyword} → ${newWeight} in ${category}`);
-  }
-}
-
-/**
- * Reset all caches (useful for testing)
- */
 // ================================
-// Helper functions (no inline export)
+// 🎁 DYNAMIC CONFIGURATION HELPERS
 // ================================
+
 function addCategory(name, config) {
   if (!name || !config) return;
   categoryKeywords[name] = config;
@@ -1136,8 +1106,9 @@ function resetCaches() {
 }
 
 // ================================
-// Final ES Module Export
+// FINAL ES MODULE EXPORTS
 // ================================
+
 export {
   // Main pipeline
   cleanNewsData,
@@ -1175,22 +1146,42 @@ export {
 };
 
 // ================================
-// CommonJS fallback
+// CommonJS fallback (for older tooling)
 // ================================
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // Main pipeline
     cleanNewsData,
     cleanArticle,
     categorizeArticle,
+
+    // NLP components
+    stemmer,
+    semanticEngine,
+    entityExtractor,
+
+    // Utilities
     normalizeText,
-    getAnalytics,
+    cleanHTML,
+    formatDate,
+    safeString,
+    isSimilar,
+
+    // Configuration
+    CONFIG,
+    categoryKeywords,
+
+    // Analytics
     logCategorization,
-    loadOptionalDeps,
+    getAnalytics,
+
+    // Dynamic config helpers
     addCategory,
     updateKeywordWeight,
     resetCaches,
-    CONFIG,
-    stemmer,
-    categoryKeywords
+
+    // Dependency management
+    loadOptionalDeps,
+    OPTIONAL_DEPS
   };
 }
