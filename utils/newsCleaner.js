@@ -1106,7 +1106,28 @@ export function updateKeywordWeight(category, keyword, newWeight) {
 /**
  * Reset all caches (useful for testing)
  */
-export function resetCaches() {
+// ================================
+// Helper functions (no inline export)
+// ================================
+function addCategory(name, config) {
+  if (!name || !config) return;
+  categoryKeywords[name] = config;
+  keywordEngine._compilePatterns();
+  console.log(`✅ Added category: ${name}`);
+}
+
+function updateKeywordWeight(category, keyword, newWeight) {
+  const cat = categoryKeywords[category];
+  if (!cat?.keywords) return;
+
+  const kw = cat.keywords.find(k => k.word === keyword);
+  if (kw) {
+    kw.weight = newWeight;
+    console.log(`✅ Updated weight: ${keyword} → ${newWeight} in ${category}`);
+  }
+}
+
+function resetCaches() {
   caches.normalization.clear();
   caches.stemming.clear();
   caches.embeddings.clear();
@@ -1114,45 +1135,48 @@ export function resetCaches() {
   console.log('🗑️  All caches cleared');
 }
 
-/* ===================================================
-   🎁 FINAL EXPORTS (Valid ES Module Syntax)
-=================================================== */
+// ================================
+// Final ES Module Export
+// ================================
 export {
   // Main pipeline
   cleanNewsData,
   cleanArticle,
   categorizeArticle,
-  
+
   // NLP components
   stemmer,
   semanticEngine,
   entityExtractor,
-  
+
   // Utilities
   normalizeText,
   cleanHTML,
   formatDate,
   safeString,
   isSimilar,
-  
+
   // Configuration
   CONFIG,
   categoryKeywords,
-  
+
   // Analytics
   logCategorization,
   getAnalytics,
-  
-  // Dynamic config helpers (defined as functions above)
+
+  // Dynamic config helpers
   addCategory,
   updateKeywordWeight,
-  
+  resetCaches,
+
   // Dependency management
   loadOptionalDeps,
   OPTIONAL_DEPS
 };
 
-// CommonJS compatibility for older tooling
+// ================================
+// CommonJS fallback
+// ================================
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     cleanNewsData,
