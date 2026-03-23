@@ -1,7 +1,8 @@
 // backend/services/newsAPIService.js
 import axios from "axios";
 import News from "../models/News.js";
-import cleanNewsData from "../utils/newsCleaner.js";
+import { cleanNewsData, categorizeArticle, addCategory } from "../utils/newsCleaner.js";
+
 
 export async function fetchAndSaveNews({ query = "", limit = 10, lang = "en" } = {}) {
   const NEWS_API_KEY = process.env.NEWS_API_KEY;
