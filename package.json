@@ -41,6 +41,7 @@
     "rss-parser": "^3.13.0",
     "bangla-stemmer": "^1.0.2",
     "@xenova/transformers": "^2.4.0",
+        "express-rate-limit": "^7.0.0",
     "@bnlp/nlp-toolkit": "^1.0.0"
   },
   "devDependencies": {
