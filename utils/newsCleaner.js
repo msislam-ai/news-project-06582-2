@@ -1,94 +1,66 @@
 /* ===================================================
-   📦 DEPENDENCY MANAGEMENT (Optional but Recommended)
+   🇧🇩 BANGLA NEWS CLEANER & CATEGORIZER
+   With Built-in Stemmer + Optional BanglaBERT + NER
+=================================================== */
+
+// 📦 Import local Bengali stemmer (no external dependency)
+import { stemBengaliWord, stemBengaliSentence, isBengaliText } from './bengaliStemmer.js';
+
+/* ===================================================
+   📦 OPTIONAL DEPENDENCY MANAGEMENT
 =================================================== */
 /**
- * Install optional dependencies for enhanced features:
+ * Optional dependencies for enhanced features:
+ * - @xenova/transformers: Semantic similarity via BanglaBERT
+ * - @bnlp/nlp-toolkit: Advanced NER (falls back to regex)
  * 
- * npm install bangla-stemmer @xenova/transformers @bnlp/nlp-toolkit
- * 
- * Or use CDN for browser:
- * <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers"></script>
+ * Install optionally:
+ * npm install @xenova/transformers @bnlp/nlp-toolkit
  */
 
 const OPTIONAL_DEPS = {
-  stemmer: null,      // bangla-stemmer
   transformer: null,  // @xenova/transformers (BanglaBERT)
   ner: null           // @bnlp/nlp-toolkit or custom NER
 };
 
-// Lazy-load dependencies when needed
+// Lazy-load optional dependencies when needed
 async function loadOptionalDeps() {
   const loaded = {};
   
-  // 🔤 Bengali Stemmer
-  try {
-    const { stem: bnStem } = await import('bangla-stemmer');
-    loaded.stemmer = bnStem;
-    console.log('✅ Bengali stemmer loaded');
-  } catch (e) {
-    console.log('ℹ️  Stemmer not available - using fallback');
-    loaded.stemmer = (word) => word; // identity fallback
-  }
-  
-  // 🧠 BanglaBERT Embeddings (via Transformers.js)
+  // 🧠 BanglaBERT Embeddings (via Transformers.js) - OPTIONAL
   try {
     const { pipeline, env } = await import('@xenova/transformers');
-    // Skip local model download check for browser/edge
     env.allowLocalModels = false;
     env.useBrowserCache = true;
     
     loaded.transformer = await pipeline(
       'feature-extraction',
       'sagorsarker/bangla-bert-base',
-      { quantized: true } // smaller, faster model
+      { quantized: true }
     );
     console.log('✅ BanglaBERT loaded (quantized)');
   } catch (e) {
-    console.log('ℹ️  BanglaBERT not available - using keyword fallback');
+    console.log('ℹ️  BanglaBERT not installed - using keyword fallback');
     loaded.transformer = null;
   }
   
-  // 🏷️ Named Entity Recognition
+  // 🏷️ Named Entity Recognition - OPTIONAL
   try {
-    // Option A: Use BNLP toolkit if available
     const { NER } = await import('@bnlp/nlp-toolkit');
     loaded.ner = new NER();
     console.log('✅ BNLP NER loaded');
   } catch (e) {
-    try {
-      // Option B: Use spaCy via Python bridge (Node.js only)
-      const { spawn } = await import('child_process');
-      loaded.ner = {
-        extract: (text) => new Promise((resolve) => {
-          const py = spawn('python3', ['-c', `
-import sys, json
-from bnlp import BanglaNER
-ner = BanglaNER()
-text = sys.argv[1]
-result = ner.extract_entities(text)
-print(json.dumps(result, ensure_ascii=False))
-          `, text]);
-          
-          let data = '';
-          py.stdout.on('data', chunk => data += chunk);
-          py.on('close', () => {
-            try { resolve(JSON.parse(data)); } 
-            catch { resolve([]); }
-          });
-        })
-      };
-      console.log('✅ Python BNLP NER bridge loaded');
-    } catch (e2) {
-      console.log('ℹ️  NER not available - using regex fallback');
-      loaded.ner = { extract: (text) => regexEntityFallback(text) };
-    }
+    console.log('ℹ️  Advanced NER not available - using regex fallback');
+    loaded.ner = { extract: (text) => regexEntityFallback(text) };
   }
   
   Object.assign(OPTIONAL_DEPS, loaded);
   return loaded;
 }
 
-// 🔄 Fallback NER using regex patterns (no dependencies)
+/* ===================================================
+   🏷️ REGEX-BASED NER FALLBACK (No Dependencies)
+=================================================== */
 function regexEntityFallback(text) {
   const entities = [];
   const normalized = text.toLowerCase();
@@ -148,7 +120,7 @@ const CONFIG = {
   
   // Performance
   cacheNormalization: true,
-  batchEmbeddingSize: 8, // process embeddings in batches
+  batchEmbeddingSize: 8,
   debugMode: false
 };
 
@@ -156,7 +128,7 @@ const CONFIG = {
 const caches = {
   normalization: new Map(),
   stemming: new Map(),
-  embeddings: new Map(), // text hash → embedding vector
+  embeddings: new Map(),
   ner: new Map()
 };
 
@@ -171,26 +143,67 @@ function hashString(str) {
 }
 
 /* ===================================================
-   🔤 BENGALI STEMMER WRAPPER
+   🔤 TEXT NORMALIZATION & STEMMING UTILS
+=================================================== */
+function safeString(text) {
+  if (!text && text !== 0) return "";
+  if (typeof text === "string") return text.trim();
+  return String(text).trim();
+}
+
+function cleanHTML(text = "") {
+  return safeString(text)
+    .replace(/<[^>]*>?/gm, "")
+    .replace(/&[a-z0-9]+;/gi, (m) => {
+      const entities = { 
+        '&amp;': '&', '&lt;': '<', '&gt;': '>', 
+        '&nbsp;': ' ', '&quot;': '"', '&apos;': "'" 
+      };
+      return entities[m.toLowerCase()] || m;
+    })
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatDate(date) {
+  if (!date) return new Date().toISOString();
+  try {
+    const d = new Date(date);
+    return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+  } catch {
+    return new Date().toISOString();
+  }
+}
+
+function normalizeText(text = "", useCache = CONFIG.cacheNormalization) {
+  if (!text) return "";
+  const key = `norm:${text}`;
+  
+  if (useCache && caches.normalization.has(key)) {
+    return caches.normalization.get(key);
+  }
+  
+  const result = safeString(text)
+    .toLowerCase()
+    .replace(/[^\u0980-\u09FF\u0041-\u007A\u0061-\u007A\u0030-\u0039\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+    
+  if (useCache) {
+    caches.normalization.set(key, result);
+    if (caches.normalization.size > 10000) {
+      caches.normalization.delete(caches.normalization.keys().next().value);
+    }
+  }
+  return result;
+}
+
+/* ===================================================
+   🔤 BENGALI STEMMER WRAPPER (Using Local Module)
 =================================================== */
 class BengaliStemmer {
   constructor() {
-    this.ready = false;
-    this.stemFn = (word) => word; // fallback
-  }
-  
-  async init() {
-    if (this.ready) return;
-    
-    try {
-      const { stem } = await import('bangla-stemmer');
-      this.stemFn = stem;
-      this.ready = true;
-      console.log('🔤 Stemmer initialized');
-    } catch {
-      console.log('⚠️  Using identity stemmer (no stemming)');
-      this.ready = true;
-    }
+    this.ready = true; // Local stemmer is always ready
   }
   
   stem(word) {
@@ -201,7 +214,8 @@ class BengaliStemmer {
       return caches.stemming.get(key);
     }
     
-    const stemmed = this.stemFn(word.toLowerCase().trim());
+    // Use built-in stemmer
+    const stemmed = stemBengaliWord(word.toLowerCase().trim());
     
     if (CONFIG.cacheNormalization) {
       caches.stemming.set(key, stemmed);
@@ -214,51 +228,40 @@ class BengaliStemmer {
   }
   
   stemSentence(sentence) {
-    return sentence
-      .split(/(\s+|[^\u0980-\u09FF\w])/)
-      .map(token => {
-        if (/^[\s\W]+$/.test(token)) return token;
-        return this.stem(token);
-      })
-      .join('')
-      .replace(/\s+/g, ' ')
-      .trim();
+    if (!CONFIG.enableStemming) return normalizeText(sentence);
+    return stemBengaliSentence(sentence);
+  }
+  
+  isBengali(text) {
+    return isBengaliText(text);
   }
 }
 
 const stemmer = new BengaliStemmer();
 
 /* ===================================================
-   🧠 SEMANTIC EMBEDDINGS (BanglaBERT)
+   🧠 SEMANTIC EMBEDDINGS (BanglaBERT - Optional)
 =================================================== */
 class SemanticEngine {
   constructor() {
     this.model = null;
     this.ready = false;
-    this.dimension = 768; // BanglaBERT base dimension
+    this.dimension = 768;
   }
   
   async init() {
     if (this.ready) return this.ready;
     
-    try {
-      const { pipeline, env } = await import('@xenova/transformers');
-      env.allowLocalModels = false;
-      env.useBrowserCache = true;
-      
-      this.model = await pipeline(
-        'feature-extraction',
-        'sagorsarker/bangla-bert-base',
-        { quantized: true }
-      );
-      this.ready = true;
-      console.log('🧠 BanglaBERT semantic engine ready');
-      return true;
-    } catch (e) {
-      console.warn('⚠️  Semantic engine unavailable:', e.message);
+    if (!OPTIONAL_DEPS.transformer) {
+      console.log('⚠️  Semantic engine unavailable (transformers not installed)');
       this.ready = false;
       return false;
     }
+    
+    this.model = OPTIONAL_DEPS.transformer;
+    this.ready = true;
+    console.log('🧠 BanglaBERT semantic engine ready');
+    return true;
   }
   
   async getEmbedding(text, maxLength = 128) {
@@ -272,17 +275,14 @@ class SemanticEngine {
     }
     
     try {
-      // Tokenize and extract [CLS] token embedding (first token)
       const output = await this.model(normalized, {
         pooling: 'mean',
         normalize: true,
         max_length: maxLength
       });
       
-      // Transformers.js returns nested arrays; extract first vector
       const embedding = Array.from(output.data.slice(0, this.dimension));
       
-      // Cache with LRU eviction
       if (CONFIG.cacheNormalization) {
         caches.embeddings.set(cacheKey, embedding);
         if (caches.embeddings.size > CONFIG.embeddingCacheSize) {
@@ -302,7 +302,6 @@ class SemanticEngine {
     
     const results = [];
     
-    // Process in batches to avoid memory issues
     for (let i = 0; i < texts.length; i += CONFIG.batchEmbeddingSize) {
       const batch = texts.slice(i, i + CONFIG.batchEmbeddingSize);
       const normalized = batch.map(t => normalizeText(t).slice(0, 512));
@@ -314,7 +313,6 @@ class SemanticEngine {
           padding: true
         });
         
-        // Extract embeddings from batch output
         const batchSize = normalized.length;
         for (let j = 0; j < batchSize; j++) {
           const start = j * this.dimension;
@@ -323,8 +321,7 @@ class SemanticEngine {
           results.push(embedding);
         }
       } catch (e) {
-        console.warn('⚠️  Batch embedding failed, falling back to individual:', e.message);
-        // Fallback to individual processing
+        console.warn('⚠️  Batch embedding failed:', e.message);
         for (const text of batch) {
           results.push(await this.getEmbedding(text));
         }
@@ -334,7 +331,6 @@ class SemanticEngine {
     return results;
   }
   
-  // Cosine similarity between two vectors
   static cosineSimilarity(vec1, vec2) {
     if (!vec1 || !vec2 || vec1.length !== vec2.length) return 0;
     
@@ -349,7 +345,6 @@ class SemanticEngine {
     return dot / (Math.sqrt(norm1) * Math.sqrt(norm2));
   }
   
-  // Find most similar category by semantic distance
   async findSimilarCategory(text, categoryExamples) {
     const textEmbedding = await this.getEmbedding(text);
     if (!textEmbedding) return null;
@@ -370,7 +365,7 @@ class SemanticEngine {
       }
     }
     
-    return bestScore > 0.5 ? bestMatch : null; // threshold for semantic match
+    return bestScore > 0.5 ? bestMatch : null;
   }
 }
 
@@ -388,56 +383,28 @@ class EntityExtractor {
   async init() {
     if (this.ready) return;
     
-    // Try BNLP toolkit first
-    try {
-      const { NER } = await import('@bnlp/nlp-toolkit');
+    // Use advanced NER if available, else regex fallback
+    if (OPTIONAL_DEPS.ner?.extract) {
       this.extractFn = async (text) => {
-        const ner = new NER();
-        return await ner.extract_entities(text);
+        try {
+          return await OPTIONAL_DEPS.ner.extract(text);
+        } catch {
+          return regexEntityFallback(text);
+        }
       };
-      this.ready = true;
-      console.log('🏷️  BNLP NER initialized');
-      return;
-    } catch {}
+      console.log('🏷️  NER initialized');
+    } else {
+      this.extractFn = (text) => Promise.resolve(regexEntityFallback(text));
+      console.log('🏷️  Using regex NER fallback');
+    }
     
-    // Try Python bridge
-    try {
-      const { spawn } = await import('child_process');
-      this.extractFn = (text) => new Promise((resolve) => {
-        const py = spawn('python3', ['-c', `
-import sys, json
-try:
-    from bnlp import BanglaNER
-    ner = BanglaNER()
-    text = sys.argv[1]
-    result = ner.extract_entities(text)
-    print(json.dumps(result, ensure_ascii=False))
-except Exception as e:
-    print(json.dumps([]))
-        `, text]);
-        
-        let data = '';
-        py.stdout.on('data', chunk => data += chunk);
-        py.on('close', () => {
-          try { resolve(JSON.parse(data)); } 
-          catch { resolve(regexEntityFallback(text)); }
-        });
-      });
-      this.ready = true;
-      console.log('🏷️  Python NER bridge initialized');
-      return;
-    } catch {}
-    
-    // Fallback to regex
-    this.extractFn = (text) => Promise.resolve(regexEntityFallback(text));
     this.ready = true;
-    console.log('🏷️  Using regex NER fallback');
   }
   
   async extract(text, options = {}) {
     const { 
-      types = ['PERSON', 'ORG', 'LOC'], // filter by entity types
-      minLength = 2 // minimum entity length
+      types = ['PERSON', 'ORG', 'LOC'],
+      minLength = 2
     } = options;
     
     if (!text || typeof text !== 'string') return [];
@@ -449,17 +416,15 @@ except Exception as e:
     
     let entities = await this.extractFn(text);
     
-    // Filter and normalize results
     entities = entities
       .filter(e => types.includes(e.type) && e.text?.length >= minLength)
       .map(e => ({
         text: e.text.trim(),
         type: e.type,
-        confidence: e.confidence || 0.8, // default if not provided
+        confidence: e.confidence || 0.8,
         position: e.position || null
       }));
     
-    // Deduplicate by text + type
     const unique = [...new Map(entities.map(e => [`${e.type}:${e.text}`, e])).values()];
     
     if (CONFIG.cacheNormalization) {
@@ -472,7 +437,6 @@ except Exception as e:
     return unique;
   }
   
-  // Extract and categorize entities for metadata
   async extractForArticle(article) {
     const text = `${article.title || ''} ${article.description || ''}`.trim();
     if (!text) return { people: [], organizations: [], locations: [], all: [] };
@@ -497,23 +461,22 @@ const categoryKeywords = {
   "রাজনীতি": {
     priority: 1,
     keywords: [
-      { word: "প্রধানমন্ত্রী", weight: 4, stemmed: "প্রধানমন্ত্র" },
-      { word: "মন্ত্রী", weight: 3, stemmed: "মন্ত্র" },
-      { word: "সরকার", weight: 3, stemmed: "সরকার" },
-      { word: "সংসদ", weight: 3, stemmed: "সংসদ" },
-      { word: "নির্বাচন", weight: 4, stemmed: "নির্বাচন" },
-      { word: "ভোট", weight: 2, stemmed: "ভোট" },
-      { word: "বিএনপি", weight: 3, stemmed: "বিএনপি" },
-      { word: "আওয়ামী লীগ", weight: 3, stemmed: "আওয়ামী লীগ" },
-      { word: "বিক্ষোভ", weight: 3, stemmed: "বিক্ষোভ" },
-      { word: "আইন পাস", weight: 3, stemmed: "আইন পাস" },
-      { word: "সংবিধান", weight: 3, stemmed: "সংবিধান" },
-      { word: "বিরোধী দল", weight: 3, stemmed: "বিরোধী দল" },
-      { word: "রাষ্ট্রপতি", weight: 3, stemmed: "রাষ্ট্রপতি" },
-      { word: "নির্বাচন কমিশন", weight: 3, stemmed: "নির্বাচন কমিশন" }
+      { word: "প্রধানমন্ত্রী", weight: 4 },
+      { word: "মন্ত্রী", weight: 3 },
+      { word: "সরকার", weight: 3 },
+      { word: "সংসদ", weight: 3 },
+      { word: "নির্বাচন", weight: 4 },
+      { word: "ভোট", weight: 2 },
+      { word: "বিএনপি", weight: 3 },
+      { word: "আওয়ামী লীগ", weight: 3 },
+      { word: "বিক্ষোভ", weight: 3 },
+      { word: "আইন পাস", weight: 3 },
+      { word: "সংবিধান", weight: 3 },
+      { word: "বিরোধী দল", weight: 3 },
+      { word: "রাষ্ট্রপতি", weight: 3 },
+      { word: "নির্বাচন কমিশন", weight: 3 }
     ],
     negative: ["খেলা", "ক্রিকেট", "ফুটবল", "সিনেমা", "গান"],
-    // Semantic examples for BanglaBERT similarity
     semanticExamples: [
       "সংসদে নতুন আইন পাস হয়েছে",
       "প্রধানমন্ত্রী আজ জাতির উদ্দেশ্যে ভাষণ দিয়েছেন",
@@ -521,17 +484,18 @@ const categoryKeywords = {
       "নির্বাচন কমিশন তফসিল ঘোষণা করেছে"
     ]
   },
-  // ... [other categories follow same pattern with semanticExamples]
   "খেলা": {
     priority: 3,
     keywords: [
-      { word: "ক্রিকেট", weight: 4, stemmed: "ক্রিকেট" },
-      { word: "ফুটবল", weight: 4, stemmed: "ফুটবল" },
-      { word: "ম্যাচ", weight: 3, stemmed: "ম্যাচ" },
-      { word: "বিশ্বকাপ", weight: 4, stemmed: "বিশ্বকাপ" },
-      { word: "রান", weight: 2, stemmed: "রান" },
-      { word: "উইকেট", weight: 2, stemmed: "উইকেট" },
-      { word: "সেঞ্চুরি", weight: 3, stemmed: "সেঞ্চুরি" }
+      { word: "ক্রিকেট", weight: 4 },
+      { word: "ফুটবল", weight: 4 },
+      { word: "ম্যাচ", weight: 3 },
+      { word: "বিশ্বকাপ", weight: 4 },
+      { word: "রান", weight: 2 },
+      { word: "উইকেট", weight: 2 },
+      { word: "সেঞ্চুরি", weight: 3 },
+      { word: "খেলোয়াড়", weight: 2 },
+      { word: "বাংলাদেশ দল", weight: 3 }
     ],
     semanticExamples: [
       "বাংলাদেশ দল বিশ্বকাপে জয়লাভ করেছে",
@@ -634,11 +598,10 @@ class AdvancedKeywordEngine {
   
   _compilePatterns() {
     for (const [category, config] of Object.entries(categoryKeywords)) {
-      const patterns = config.keywords.map(({ word, weight, exact = true }) => {
+      const patterns = config.keywords.map(({ word, weight }) => {
         const normalized = normalizeText(word);
         const stemmed = CONFIG.enableStemming ? stemmer.stem(word) : normalized;
         
-        // Store stemmed version for matching
         if (CONFIG.enableStemming) {
           if (!this.stemmedIndex.has(category)) {
             this.stemmedIndex.set(category, new Map());
@@ -647,9 +610,7 @@ class AdvancedKeywordEngine {
         }
         
         const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = exact 
-          ? new RegExp(`\\b${escaped}\\b`, 'gu') 
-          : new RegExp(`${escaped}`, 'gu');
+        const regex = new RegExp(`\\b${escaped}\\b`, 'gu');
         
         return { regex, weight, original: word, stemmed };
       });
@@ -665,14 +626,11 @@ class AdvancedKeywordEngine {
     let score = 0;
     const matches = [];
     
-    // 🔍 Exact + stemmed keyword matching
     for (const { regex, weight, original, stemmed: stemWord } of patterns) {
       regex.lastIndex = 0;
       
-      // Try exact match first
       let found = normalized.match(regex);
       
-      // Try stemmed match if enabled and no exact match
       if (CONFIG.enableStemming && !found && stemWord && stemWord !== normalized) {
         const stemRegex = new RegExp(`\\b${stemWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gu');
         found = stemmed.match(stemRegex);
@@ -692,14 +650,14 @@ class AdvancedKeywordEngine {
       }
     }
     
-    // ⛔ Negative keyword penalty
+    // Negative keyword penalty
     const negative = categoryKeywords[category]?.negative || [];
     for (const neg of negative) {
       const negNormalized = normalizeText(neg);
       const negStemmed = CONFIG.enableStemming ? stemmer.stem(neg) : negNormalized;
       
       if (normalized.includes(negNormalized) || stemmed.includes(negStemmed)) {
-        score *= 0.25; // Strong penalty
+        score *= 0.25;
         matches.push({ keyword: `⛔${neg}`, count: 1, weight: -1, contribution: -score * 0.75 });
         break;
       }
@@ -712,7 +670,7 @@ class AdvancedKeywordEngine {
 const keywordEngine = new AdvancedKeywordEngine();
 
 /* ===================================================
-   🎯 HYBRID CATEGORIZATION: Keywords + Semantics + Entities
+   🎯 HYBRID CATEGORIZATION ENGINE
 =================================================== */
 async function categorizeArticle(article, options = {}) {
   const { 
@@ -734,40 +692,39 @@ async function categorizeArticle(article, options = {}) {
   
   const results = [];
   
-  // 📊 Phase 1: Keyword-based scoring (with stemming)
+  // Phase 1: Keyword scoring with stemming
   for (const [category, config] of Object.entries(categoryKeywords)) {
     const { score, matches } = await keywordEngine.scoreText(fullText, category);
     if (score > 0) {
       results.push({
         category,
         keywordScore: score,
-        semanticScore: 0, // filled later
-        entityScore: 0,   // filled later
+        semanticScore: 0,
+        entityScore: 0,
         matches,
         priority: config.priority || 99
       });
     }
   }
   
-  // 🧠 Phase 2: Semantic similarity boost (if enabled)
+  // Phase 2: Semantic similarity boost
   if (useSemantics && semanticEngine.ready) {
     for (const result of results) {
       const examples = categoryKeywords[result.category]?.semanticExamples || [];
       if (examples.length > 0) {
         const semanticMatch = await semanticEngine.findSimilarCategory(fullText, { [result.category]: examples });
         if (semanticMatch) {
-          result.semanticScore = semanticMatch.similarity * 10; // scale to match keyword weights
+          result.semanticScore = semanticMatch.similarity * 10;
           result.semanticExample = semanticMatch.example;
         }
       }
     }
   }
   
-  // 🏷️ Phase 3: Entity-based scoring (if enabled)
+  // Phase 3: Entity-based scoring
   if (useEntities && entityExtractor.ready) {
     const entities = await entityExtractor.extract(fullText);
     
-    // Entity-category mapping for bonus scoring
     const entityCategoryBoost = {
       'রাজনীতি': ['আওয়ামী লীগ', 'বিএনপি', 'প্রধানমন্ত্রী', 'সংসদ', 'নির্বাচন কমিশন'],
       'খেলা': ['বাংলাদেশ দল', 'বিসিবি', 'ফিফা', 'আইসিসি'],
@@ -783,13 +740,13 @@ async function categorizeArticle(article, options = {}) {
       );
       
       if (matchedEntities.length > 0) {
-        result.entityScore = matchedEntities.length * 2; // small boost per entity
+        result.entityScore = matchedEntities.length * 2;
         result.matchedEntities = matchedEntities.map(e => e.text);
       }
     }
   }
   
-  // 📈 Calculate final scores & confidence
+  // Calculate final scores & confidence
   let totalScore = 0;
   results.forEach(result => {
     result.totalScore = result.keywordScore + result.semanticScore + result.entityScore;
@@ -797,10 +754,8 @@ async function categorizeArticle(article, options = {}) {
   });
   
   results.forEach(result => {
-    // Confidence based on score ratio + bonus for multi-signal agreement
     let confidence = totalScore > 0 ? result.totalScore / totalScore : 0;
     
-    // Bonus if multiple signals agree (keyword + semantic + entity)
     const signalCount = [
       result.keywordScore > 0,
       result.semanticScore > 0,
@@ -809,21 +764,19 @@ async function categorizeArticle(article, options = {}) {
     
     confidence *= Math.min(1 + (signalCount - 1) * 0.2, 1.3);
     
-    // Bonus for high-weight keyword matches
     const highWeightMatches = result.matches?.filter(m => m.weight >= 3).length || 0;
     confidence *= Math.min(1 + highWeightMatches * 0.1, 1.2);
     
     result.confidence = Math.min(Math.max(confidence, 0), 1);
   });
   
-  // 🎯 Sort by confidence, then priority, then score
+  // Sort by confidence, priority, score
   results.sort((a, b) => {
     if (b.confidence !== a.confidence) return b.confidence - a.confidence;
     if (a.priority !== b.priority) return a.priority - b.priority;
     return b.totalScore - a.totalScore;
   });
   
-  // Filter by confidence threshold
   const qualified = results.filter(r => r.confidence >= minConfidence);
   
   if (returnAll) {
@@ -842,35 +795,31 @@ async function categorizeArticle(article, options = {}) {
     })) : [{ category: "আরও", confidence: 0, score: 0, breakdown: {}, matches: [] }];
   }
   
-  // Return top category or fallback
   return qualified.length > 0 ? qualified[0].category : "আরও";
 }
 
 /* ===================================================
-   🧹 ENHANCED ARTICLE CLEANING WITH NLP METADATA
+   🧹 ENHANCED ARTICLE CLEANING
 =================================================== */
 async function cleanArticle(article = {}) {
   const title = cleanHTML(article.title || "No Title");
   const description = cleanHTML(article.description || article.contentSnippet || "");
   const content = cleanHTML(article.content || "");
   
-  // 🎯 Categorization with all signals
   const categoryResult = await categorizeArticle({ title, description, content }, { returnAll: true });
   const primaryCategory = categoryResult[0]?.category || "আরও";
   
-  // 🏷️ Entity extraction for metadata
   let entities = { people: [], organizations: [], locations: [], all: [] };
   if (CONFIG.enableNER && entityExtractor.ready) {
     entities = await entityExtractor.extractForArticle({ title, description });
   }
   
-  // 🔤 Generate stemmed keywords for search indexing
   const allText = `${title} ${description}`;
   const stemmedKeywords = CONFIG.enableStemming 
     ? allText.split(/[\s\W]+/).filter(w => w.length > 2).map(w => stemmer.stem(w))
     : [];
   
-  const cleaned = {
+  return {
     id: article.id || `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     title,
     description,
@@ -881,23 +830,17 @@ async function cleanArticle(article = {}) {
     url: safeString(article.url || article.link || ""),
     publishedAt: formatDate(article.pubDate || article.publishedAt || article.date),
     
-    // 🎯 Enhanced categorization
     category: primaryCategory,
     allCategories: categoryResult.slice(0, CONFIG.maxCategories),
     confidence: categoryResult[0]?.confidence || 0,
     categorizationBreakdown: categoryResult[0]?.breakdown || {},
     matchedKeywords: categoryResult[0]?.matches?.slice(0, 5).map(m => m.keyword) || [],
     
-    // 🏷️ Entity metadata
     entities,
-    
-    // 🔤 Search optimization
     stemmedKeywords: [...new Set(stemmedKeywords)].slice(0, 20),
     
-    // 🧠 Semantic features (if available)
     embeddingAvailable: semanticEngine.ready,
     
-    // 📊 Processing metadata
     language: 'bn',
     processedAt: new Date().toISOString(),
     processingFlags: {
@@ -906,112 +849,28 @@ async function cleanArticle(article = {}) {
       ner: CONFIG.enableNER && entityExtractor.ready
     }
   };
-  
-  return cleaned;
 }
 
 /* ===================================================
-   🚀 MAIN PIPELINE WITH BATCH PROCESSING
+   🔍 SIMILARITY CHECK FOR DEDUPLICATION
 =================================================== */
-async function cleanNewsData(rawNews = [], options = {}) {
-  const {
-    enableDedupe = true,
-    sortBy = 'publishedAt',
-    sortOrder = 'desc',
-    minConfidence = CONFIG.confidenceThreshold,
-    onProgress = null,
-    batchSize = 10 // process articles in batches for NLP ops
-  } = options;
+function isSimilar(title1, title2, threshold = 0.85) {
+  const t1 = normalizeText(title1);
+  const t2 = normalizeText(title2);
   
-  console.log(`🧹 Starting enhanced pipeline with ${rawNews.length} articles...`);
-  if (!Array.isArray(rawNews)) return [];
+  if (t1 === t2 || t1.includes(t2) || t2.includes(t1)) return true;
   
-  const startTime = Date.now();
+  // Jaccard similarity for fuzzy matching
+  const set1 = new Set(t1.split(' '));
+  const set2 = new Set(t2.split(' '));
+  const intersection = [...set1].filter(x => set2.has(x)).length;
+  const union = new Set([...set1, ...set2]).size;
   
-  // 🔄 Initialize NLP components (lazy load)
-  await Promise.all([
-    CONFIG.enableStemming ? stemmer.init() : Promise.resolve(),
-    CONFIG.enableSemanticSimilarity ? semanticEngine.init() : Promise.resolve(),
-    CONFIG.enableNER ? entityExtractor.init() : Promise.resolve()
-  ]);
-  
-  let cleaned = [];
-  
-  // 📦 Batch processing for memory efficiency
-  for (let i = 0; i < rawNews.length; i += batchSize) {
-    const batch = rawNews.slice(i, i + batchSize);
-    
-    const batchResults = await Promise.all(
-      batch.map(async (article, idx) => {
-        if (onProgress && (i + idx) % 20 === 0) {
-          onProgress({ 
-            step: 'processing', 
-            progress: (i + idx) / rawNews.length, 
-            processed: i + idx,
-            total: rawNews.length 
-          });
-        }
-        return await cleanArticle(article);
-      })
-    );
-    
-    cleaned.push(...batchResults);
-  }
-  
-  // 🗑️ Filter low-quality articles
-  cleaned = cleaned.filter(article => 
-    article.description.length >= CONFIG.minDescriptionLength &&
-    article.confidence >= minConfidence
-  );
-  
-  // 🔁 Remove duplicates (enhanced with entity matching)
-  if (enableDedupe) {
-    const before = cleaned.length;
-    cleaned = await removeDuplicatesEnhanced(cleaned, { 
-      timeWindowHours: 48,
-      useEntities: CONFIG.enableNER
-    });
-    console.log(`🗑️ Removed ${before - cleaned.length} duplicates`);
-  }
-  
-  // 📊 Sort results
-  cleaned.sort((a, b) => {
-    let comparison = 0;
-    switch (sortBy) {
-      case 'confidence':
-        comparison = b.confidence - a.confidence;
-        break;
-      case 'relevance':
-        comparison = (b.confidence * 0.6 + (b.allCategories?.length || 0) * 0.2 + (b.entities?.all?.length || 0) * 0.2) - 
-                     (a.confidence * 0.6 + (a.allCategories?.length || 0) * 0.2 + (a.entities?.all?.length || 0) * 0.2);
-        break;
-      case 'publishedAt':
-      default:
-        comparison = new Date(b.publishedAt) - new Date(a.publishedAt);
-    }
-    return sortOrder === 'desc' ? comparison : -comparison;
-  });
-  
-  const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-  console.log(`✅ Enhanced pipeline complete: ${cleaned.length} articles in ${duration}s`);
-  console.log(`📊 Features: Stemming=${CONFIG.enableStemming}, Semantic=${semanticEngine.ready}, NER=${entityExtractor.ready}`);
-  
-  if (CONFIG.debugMode && cleaned[0]) {
-    console.log('🔍 Sample enriched article:', JSON.stringify({
-      title: cleaned[0].title,
-      category: cleaned[0].category,
-      confidence: cleaned[0].confidence,
-      breakdown: cleaned[0].categorizationBreakdown,
-      entities: cleaned[0].entities,
-      keywords: cleaned[0].matchedKeywords
-    }, null, 2));
-  }
-  
-  return cleaned;
+  return union > 0 ? intersection / union >= threshold : false;
 }
 
 /* ===================================================
-   🔍 ENHANCED DUPLICATE DETECTION WITH ENTITIES
+   🔍 ENHANCED DUPLICATE DETECTION
 =================================================== */
 async function removeDuplicatesEnhanced(newsArray, options = {}) {
   const { 
@@ -1027,7 +886,7 @@ async function removeDuplicatesEnhanced(newsArray, options = {}) {
   for (const article of newsArray) {
     let isDuplicate = false;
     
-    // 🌐 URL-based dedup (fast path)
+    // URL-based dedup
     if (article.url && seenUrls.has(article.url)) {
       const existing = seenUrls.get(article.url);
       const timeDiff = Math.abs(new Date(article.publishedAt) - new Date(existing.publishedAt)) / 36e5;
@@ -1036,10 +895,9 @@ async function removeDuplicatesEnhanced(newsArray, options = {}) {
       }
     }
     
-    // 🧠 Content-based fuzzy matching
+    // Content-based fuzzy matching
     if (!isDuplicate) {
       for (const existing of unique) {
-        // Field-based similarity
         for (const field of compareFields) {
           if (article[field] && existing[field] && isSimilar(article[field], existing[field])) {
             isDuplicate = true;
@@ -1047,7 +905,7 @@ async function removeDuplicatesEnhanced(newsArray, options = {}) {
           }
         }
         
-        // 🏷️ Entity-based similarity (if enabled)
+        // Entity-based similarity
         if (!isDuplicate && useEntities && CONFIG.enableNER) {
           const aEntities = new Set(article.entities?.all?.map(e => e.text.toLowerCase()) || []);
           const bEntities = new Set(existing.entities?.all?.map(e => e.text.toLowerCase()) || []);
@@ -1077,7 +935,105 @@ async function removeDuplicatesEnhanced(newsArray, options = {}) {
 }
 
 /* ===================================================
-   📈 ANALYTICS & CONTINUOUS LEARNING
+   🚀 MAIN PIPELINE
+=================================================== */
+async function cleanNewsData(rawNews = [], options = {}) {
+  const {
+    enableDedupe = true,
+    sortBy = 'publishedAt',
+    sortOrder = 'desc',
+    minConfidence = CONFIG.confidenceThreshold,
+    onProgress = null,
+    batchSize = 10
+  } = options;
+  
+  console.log(`🧹 Starting enhanced pipeline with ${rawNews.length} articles...`);
+  if (!Array.isArray(rawNews)) return [];
+  
+  const startTime = Date.now();
+  
+  // Initialize optional components
+  await Promise.all([
+    CONFIG.enableSemanticSimilarity ? semanticEngine.init() : Promise.resolve(),
+    CONFIG.enableNER ? entityExtractor.init() : Promise.resolve()
+  ]);
+  
+  let cleaned = [];
+  
+  // Batch processing
+  for (let i = 0; i < rawNews.length; i += batchSize) {
+    const batch = rawNews.slice(i, i + batchSize);
+    
+    const batchResults = await Promise.all(
+      batch.map(async (article, idx) => {
+        if (onProgress && (i + idx) % 20 === 0) {
+          onProgress({ 
+            step: 'processing', 
+            progress: (i + idx) / rawNews.length, 
+            processed: i + idx,
+            total: rawNews.length 
+          });
+        }
+        return await cleanArticle(article);
+      })
+    );
+    
+    cleaned.push(...batchResults);
+  }
+  
+  // Filter low-quality
+  cleaned = cleaned.filter(article => 
+    article.description.length >= CONFIG.minDescriptionLength &&
+    article.confidence >= minConfidence
+  );
+  
+  // Remove duplicates
+  if (enableDedupe) {
+    const before = cleaned.length;
+    cleaned = await removeDuplicatesEnhanced(cleaned, { 
+      timeWindowHours: 48,
+      useEntities: CONFIG.enableNER
+    });
+    console.log(`🗑️ Removed ${before - cleaned.length} duplicates`);
+  }
+  
+  // Sort
+  cleaned.sort((a, b) => {
+    let comparison = 0;
+    switch (sortBy) {
+      case 'confidence':
+        comparison = b.confidence - a.confidence;
+        break;
+      case 'relevance':
+        comparison = (b.confidence * 0.6 + (b.allCategories?.length || 0) * 0.2 + (b.entities?.all?.length || 0) * 0.2) - 
+                     (a.confidence * 0.6 + (a.allCategories?.length || 0) * 0.2 + (a.entities?.all?.length || 0) * 0.2);
+        break;
+      case 'publishedAt':
+      default:
+        comparison = new Date(b.publishedAt) - new Date(a.publishedAt);
+    }
+    return sortOrder === 'desc' ? comparison : -comparison;
+  });
+  
+  const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+  console.log(`✅ Enhanced pipeline complete: ${cleaned.length} articles in ${duration}s`);
+  console.log(`📊 Features: Stemming=${CONFIG.enableStemming}, Semantic=${semanticEngine.ready}, NER=${entityExtractor.ready}`);
+  
+  if (CONFIG.debugMode && cleaned[0]) {
+    console.log('🔍 Sample:', JSON.stringify({
+      title: cleaned[0].title,
+      category: cleaned[0].category,
+      confidence: cleaned[0].confidence,
+      entities: cleaned[0].entities,
+      keywords: cleaned[0].matchedKeywords
+    }, null, 2));
+  }
+  
+  return cleaned;
+}
+
+/* ===================================================
+   📈 ANALYTICS & LEARNING
 =================================================== */
 const categorizationLog = [];
 
@@ -1091,43 +1047,12 @@ function logCategorization(article, predicted, actual = null, metadata = {}) {
     breakdown: article.categorizationBreakdown,
     entities: article.entities?.all?.map(e => e.text) || [],
     keywords: article.matchedKeywords,
-    features: metadata, // stemming, semantic, ner flags
+    features: metadata,
     correct: actual ? predicted === actual : null
   });
   
-  // 🔄 Online weight adjustment (simple reinforcement)
-  if (actual && predicted !== actual && CONFIG.enableStemming) {
-    adjustKeywordWeights(predicted, actual, article);
-  }
-}
-
-function adjustKeywordWeights(wrongCategory, correctCategory, article) {
-  const text = normalizeText(`${article.title} ${article.description}`);
-  
-  // Find keywords that contributed to wrong prediction
-  const { matches: wrongMatches } = await keywordEngine.scoreText(text, wrongCategory);
-  const { matches: correctMatches } = await keywordEngine.scoreText(text, correctCategory);
-  
-  // Penalize misleading keywords in wrong category
-  wrongMatches.forEach(m => {
-    const config = categoryKeywords[wrongCategory];
-    const kw = config?.keywords?.find(k => k.word === m.keyword);
-    if (kw && kw.weight > 1) {
-      kw.weight = Math.max(1, kw.weight * 0.92); // gentle decay
-    }
-  });
-  
-  // Reward keywords in correct category
-  correctMatches.forEach(m => {
-    const config = categoryKeywords[correctCategory];
-    const kw = config?.keywords?.find(k => k.word === m.keyword);
-    if (kw) {
-      kw.weight = Math.min(10, kw.weight * 1.08); // gentle growth
-    }
-  });
-  
-  if (CONFIG.debugMode) {
-    console.log(`🔄 Weight adjustment: ${wrongCategory}→${correctCategory}`);
+  if (categorizationLog.length > 1000) {
+    categorizationLog.shift();
   }
 }
 
@@ -1137,7 +1062,6 @@ function getAnalytics() {
   const correct = evaluated.filter(l => l.correct).length;
   const accuracy = total > 0 ? ((correct / total) * 100).toFixed(2) : 0;
   
-  // Per-category breakdown
   const byCategory = {};
   evaluated.forEach(log => {
     if (!byCategory[log.predicted]) {
@@ -1169,7 +1093,7 @@ function getAnalytics() {
 }
 
 /* ===================================================
-   🎁 EXPORTS & UTILITIES
+   🎁 EXPORTS
 =================================================== */
 export {
   // Main pipeline
@@ -1177,7 +1101,7 @@ export {
   cleanArticle,
   categorizeArticle,
   
-  // NLP components (for advanced usage)
+  // NLP components
   stemmer,
   semanticEngine,
   entityExtractor,
@@ -1186,16 +1110,18 @@ export {
   normalizeText,
   cleanHTML,
   formatDate,
+  safeString,
+  isSimilar,
   
   // Configuration
   CONFIG,
   categoryKeywords,
   
-  // Analytics & learning
+  // Analytics
   logCategorization,
   getAnalytics,
   
-  // Dynamic configuration
+  // Dynamic config
   addCategory: (name, config) => { 
     categoryKeywords[name] = config; 
     keywordEngine._compilePatterns(); 
@@ -1213,7 +1139,7 @@ export {
   OPTIONAL_DEPS
 };
 
-// 🌍 Browser/Node compatibility
+// CommonJS compatibility
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     cleanNewsData,
