@@ -16,49 +16,31 @@
     "lint:fix": "eslint src/**/*.js --fix",
     "format": "prettier --write \"src/**/*.js\"",
     "test": "node --test tests/**/*.test.js",
-    "test:watch": "node --test --watch tests/**/*.test.js",
     "test:coverage": "c8 node --test tests/**/*.test.js",
-    "db:migrate": "node src/scripts/migrate-db.js",
     "db:seed": "node src/scripts/seed-categories.js",
     "news:update": "node src/scripts/trigger-update.js",
     "news:clean": "node src/scripts/clean-database.js",
-    "build": "echo 'ESM project - no build step required'",
-    "prepare": "husky || true",
-    "postinstall": "node src/scripts/postinstall-check.js"
+    "prepare": "husky || true"
   },
   "keywords": [
-    "bangla",
-    "bengali",
-    "news",
-    "AI",
-    "NLP",
-    "aggregator",
-    "puter",
-    "rss",
-    "mongodb",
-    "express",
-    "auto-update"
+    "bangla", "bengali", "news", "AI", "NLP", "aggregator",
+    "puter", "rss", "mongodb", "express", "auto-update"
   ],
   "author": {
     "name": "Sadekul Islam",
-    "email": "sadekul@example.com",
-    "url": "https://github.com/sadekul"
+    "email": "sadekul@example.com"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/yourusername/bangla-news-backend.git"
   },
-  "bugs": {
-    "url": "https://github.com/yourusername/bangla-news-backend/issues"
-  },
-  "homepage": "https://github.com/yourusername/bangla-news-backend#readme",
   "dependencies": {
     "express": "^4.18.2",
-    "mongoose": "^8.0.0",
-    "axios": "^1.6.0",
+    "mongoose": "^8.0.3",
+    "axios": "^1.6.7",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
+    "dotenv": "^16.4.5",
     "helmet": "^7.1.0",
     "compression": "^1.7.4",
     "express-rate-limit": "^7.1.5",
@@ -66,20 +48,14 @@
     "node-cron": "^3.0.3",
     "p-limit": "^5.0.0",
     "rss-parser": "^3.13.0",
-    
     "zod": "^3.22.4",
-    
     "@heyputer/puter.js": "^2.2.8",
-    
-    "bangla-stemmer": "^1.0.2",
-    "@xenova/transformers": "^2.14.0",
-    
     "winston": "^3.11.0",
     "morgan": "^1.10.0"
   },
   "optionalDependencies": {
-    "@bnlp/nlp-toolkit": "^0.1.5",
-    "onnxruntime-node": "^1.16.0"
+    "@xenova/transformers": "^2.14.0",
+    "@bnlp/nlp-toolkit": "^0.1.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
@@ -97,30 +73,5 @@
       "eslint --fix",
       "prettier --write"
     ]
-  },
-  "eslintConfig": {
-    "root": true,
-    "env": {
-      "node": true,
-      "es2022": true
-    },
-    "extends": [
-      "eslint:recommended",
-      "prettier"
-    ],
-    "parserOptions": {
-      "ecmaVersion": "latest",
-      "sourceType": "module"
-    },
-    "rules": {
-      "no-console": "warn",
-      "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
-    }
-  },
-  "prettier": {
-    "semi": true,
-    "singleQuote": false,
-    "trailingComma": "none",
-    "printWidth": 100
   }
 }
