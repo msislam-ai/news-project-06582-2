@@ -203,7 +203,7 @@ function normalizeText(text = "", useCache = CONFIG.cacheNormalization) {
 =================================================== */
 class BengaliStemmer {
   constructor() {
-    this.ready = true; // Local stemmer is always ready
+    this.ready = true;
   }
   
   stem(word) {
@@ -214,7 +214,6 @@ class BengaliStemmer {
       return caches.stemming.get(key);
     }
     
-    // Use built-in stemmer
     const stemmed = stemBengaliWord(word.toLowerCase().trim());
     
     if (CONFIG.cacheNormalization) {
@@ -383,7 +382,6 @@ class EntityExtractor {
   async init() {
     if (this.ready) return;
     
-    // Use advanced NER if available, else regex fallback
     if (OPTIONAL_DEPS.ner?.extract) {
       this.extractFn = async (text) => {
         try {
@@ -650,7 +648,6 @@ class AdvancedKeywordEngine {
       }
     }
     
-    // Negative keyword penalty
     const negative = categoryKeywords[category]?.negative || [];
     for (const neg of negative) {
       const negNormalized = normalizeText(neg);
@@ -692,7 +689,6 @@ async function categorizeArticle(article, options = {}) {
   
   const results = [];
   
-  // Phase 1: Keyword scoring with stemming
   for (const [category, config] of Object.entries(categoryKeywords)) {
     const { score, matches } = await keywordEngine.scoreText(fullText, category);
     if (score > 0) {
@@ -707,7 +703,6 @@ async function categorizeArticle(article, options = {}) {
     }
   }
   
-  // Phase 2: Semantic similarity boost
   if (useSemantics && semanticEngine.ready) {
     for (const result of results) {
       const examples = categoryKeywords[result.category]?.semanticExamples || [];
@@ -721,7 +716,6 @@ async function categorizeArticle(article, options = {}) {
     }
   }
   
-  // Phase 3: Entity-based scoring
   if (useEntities && entityExtractor.ready) {
     const entities = await entityExtractor.extract(fullText);
     
@@ -746,7 +740,6 @@ async function categorizeArticle(article, options = {}) {
     }
   }
   
-  // Calculate final scores & confidence
   let totalScore = 0;
   results.forEach(result => {
     result.totalScore = result.keywordScore + result.semanticScore + result.entityScore;
@@ -770,7 +763,6 @@ async function categorizeArticle(article, options = {}) {
     result.confidence = Math.min(Math.max(confidence, 0), 1);
   });
   
-  // Sort by confidence, priority, score
   results.sort((a, b) => {
     if (b.confidence !== a.confidence) return b.confidence - a.confidence;
     if (a.priority !== b.priority) return a.priority - b.priority;
@@ -860,7 +852,6 @@ function isSimilar(title1, title2, threshold = 0.85) {
   
   if (t1 === t2 || t1.includes(t2) || t2.includes(t1)) return true;
   
-  // Jaccard similarity for fuzzy matching
   const set1 = new Set(t1.split(' '));
   const set2 = new Set(t2.split(' '));
   const intersection = [...set1].filter(x => set2.has(x)).length;
@@ -886,7 +877,6 @@ async function removeDuplicatesEnhanced(newsArray, options = {}) {
   for (const article of newsArray) {
     let isDuplicate = false;
     
-    // URL-based dedup
     if (article.url && seenUrls.has(article.url)) {
       const existing = seenUrls.get(article.url);
       const timeDiff = Math.abs(new Date(article.publishedAt) - new Date(existing.publishedAt)) / 36e5;
@@ -895,7 +885,6 @@ async function removeDuplicatesEnhanced(newsArray, options = {}) {
       }
     }
     
-    // Content-based fuzzy matching
     if (!isDuplicate) {
       for (const existing of unique) {
         for (const field of compareFields) {
@@ -905,7 +894,6 @@ async function removeDuplicatesEnhanced(newsArray, options = {}) {
           }
         }
         
-        // Entity-based similarity
         if (!isDuplicate && useEntities && CONFIG.enableNER) {
           const aEntities = new Set(article.entities?.all?.map(e => e.text.toLowerCase()) || []);
           const bEntities = new Set(existing.entities?.all?.map(e => e.text.toLowerCase()) || []);
@@ -952,7 +940,6 @@ async function cleanNewsData(rawNews = [], options = {}) {
   
   const startTime = Date.now();
   
-  // Initialize optional components
   await Promise.all([
     CONFIG.enableSemanticSimilarity ? semanticEngine.init() : Promise.resolve(),
     CONFIG.enableNER ? entityExtractor.init() : Promise.resolve()
@@ -960,7 +947,6 @@ async function cleanNewsData(rawNews = [], options = {}) {
   
   let cleaned = [];
   
-  // Batch processing
   for (let i = 0; i < rawNews.length; i += batchSize) {
     const batch = rawNews.slice(i, i + batchSize);
     
@@ -981,13 +967,11 @@ async function cleanNewsData(rawNews = [], options = {}) {
     cleaned.push(...batchResults);
   }
   
-  // Filter low-quality
   cleaned = cleaned.filter(article => 
     article.description.length >= CONFIG.minDescriptionLength &&
     article.confidence >= minConfidence
   );
   
-  // Remove duplicates
   if (enableDedupe) {
     const before = cleaned.length;
     cleaned = await removeDuplicatesEnhanced(cleaned, { 
@@ -997,7 +981,6 @@ async function cleanNewsData(rawNews = [], options = {}) {
     console.log(`🗑️ Removed ${before - cleaned.length} duplicates`);
   }
   
-  // Sort
   cleaned.sort((a, b) => {
     let comparison = 0;
     switch (sortBy) {
@@ -1093,7 +1076,46 @@ function getAnalytics() {
 }
 
 /* ===================================================
-   🎁 EXPORTS
+   🎁 DYNAMIC CONFIGURATION HELPERS (Defined as Functions)
+=================================================== */
+
+/**
+ * Add a new category dynamically
+ */
+export function addCategory(name, config) {
+  if (!name || !config) return;
+  categoryKeywords[name] = config;
+  keywordEngine._compilePatterns();
+  console.log(`✅ Added category: ${name}`);
+}
+
+/**
+ * Update keyword weight for a category
+ */
+export function updateKeywordWeight(category, keyword, newWeight) {
+  const cat = categoryKeywords[category];
+  if (!cat?.keywords) return;
+  
+  const kw = cat.keywords.find(k => k.word === keyword);
+  if (kw) {
+    kw.weight = newWeight;
+    console.log(`✅ Updated weight: ${keyword} → ${newWeight} in ${category}`);
+  }
+}
+
+/**
+ * Reset all caches (useful for testing)
+ */
+export function resetCaches() {
+  caches.normalization.clear();
+  caches.stemming.clear();
+  caches.embeddings.clear();
+  caches.ner.clear();
+  console.log('🗑️  All caches cleared');
+}
+
+/* ===================================================
+   🎁 FINAL EXPORTS (Valid ES Module Syntax)
 =================================================== */
 export {
   // Main pipeline
@@ -1121,32 +1143,31 @@ export {
   logCategorization,
   getAnalytics,
   
-  // Dynamic config
-  addCategory: (name, config) => { 
-    categoryKeywords[name] = config; 
-    keywordEngine._compilePatterns(); 
-  },
-  updateKeywordWeight: (category, keyword, newWeight) => {
-    const cat = categoryKeywords[category];
-    if (cat?.keywords) {
-      const kw = cat.keywords.find(k => k.word === keyword);
-      if (kw) kw.weight = newWeight;
-    }
-  },
+  // Dynamic config helpers (defined as functions above)
+  addCategory,
+  updateKeywordWeight,
+  resetCaches,
   
   // Dependency management
   loadOptionalDeps,
   OPTIONAL_DEPS
 };
 
-// CommonJS compatibility
+// CommonJS compatibility for older tooling
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     cleanNewsData,
+    cleanArticle,
     categorizeArticle,
     normalizeText,
     getAnalytics,
     logCategorization,
-    loadOptionalDeps
+    loadOptionalDeps,
+    addCategory,
+    updateKeywordWeight,
+    resetCaches,
+    CONFIG,
+    stemmer,
+    categoryKeywords
   };
 }
