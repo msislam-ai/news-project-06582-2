@@ -1146,7 +1146,6 @@ export {
   // Dynamic config helpers (defined as functions above)
   addCategory,
   updateKeywordWeight,
-  resetCaches,
   
   // Dependency management
   loadOptionalDeps,
