@@ -1,15 +1,28 @@
 {
-  "name": "backend",
+  "name": "bangla-news-backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "Backend for Bangla News AI system with rewriting, summarization, scraping, and auto-updater",
   "main": "index.js",
+  "type": "module",
   "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "lint": "eslint .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "module",
+  "keywords": [
+    "bangla",
+    "news",
+    "AI",
+    "NLP",
+    "scraper",
+    "auto-update",
+    "puter.js",
+    "rewriter",
+    "summarizer"
+  ],
+  "author": "Sadekul Islam",
+  "license": "MIT",
   "dependencies": {
     "@heyputer/puter.js": "^2.2.8",
     "axios": "^1.13.4",
@@ -25,7 +38,13 @@
     "compression": "^1.7.4",
     "p-limit": "^4.0.0",
     "node-cache": "^5.1.2",
-    "rss-parser": "^3.13.0"
+    "rss-parser": "^3.13.0",
+    "bangla-stemmer": "^1.0.2",
+    "@xenova/transformers": "^2.4.0",
+    "@bnlp/nlp-toolkit": "^1.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "eslint": "^8.48.0"
   }
 }
-
