@@ -1144,7 +1144,7 @@ export {
   loadOptionalDeps,
   OPTIONAL_DEPS
 };
-
+export default cleanNewsData;
 // ================================
 // CommonJS fallback (for older tooling)
 // ================================
