@@ -51,6 +51,7 @@
     "zod": "^3.22.4",
     "@heyputer/puter.js": "^2.2.8",
     "winston": "^3.11.0",
+     "cheerio": "^1.0.0-rc.12",
     "morgan": "^1.10.0"
   },
   "optionalDependencies": {
