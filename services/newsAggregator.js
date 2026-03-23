@@ -4,7 +4,7 @@ import { fetchRSSByCategory } from "../services/rssService.js";
 import { RSS_SOURCES } from "../config/rssSources.js";
 import { scrapeArticle } from "./scraperService.js";
 import { fetchAndSaveNews as fetchNewsAPI } from "./newsAPIService.js";
-import cleanNewsData from "../utils/newsCleaner.js";
+import { cleanNewsData, categorizeArticle, addCategory } from "../utils/newsCleaner.js";
 import News from "../models/News.js";
 
 /* ===================================================
