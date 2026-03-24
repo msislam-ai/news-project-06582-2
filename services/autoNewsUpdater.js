@@ -7,7 +7,8 @@ import { RSS_SOURCES } from "../config/rssSources.js";
 import { scrapeArticle } from "./scraperService.js";
 import { fetchAndSaveNews } from "./newsAPIService.js";
 import News from "../models/News.js";
-import cleanNewsData from "../utils/newsCleaner.js";
+// ✅ FIX #1: Use named import (newsCleaner.js exports named functions)
+import { cleanNewsData } from "../utils/newsCleaner.js";
 
 /* ======================
    🔧 Configuration
@@ -19,7 +20,9 @@ const CONFIG = {
   newsApiLimit: 10,                       // News API fetch limit
   maxRetries: 3,                          // Retry attempts for failures
   retryDelayMs: 1000,                     // Base retry delay
+  maxRetryDelayMs: 30000,                 // ✅ FIX: Cap max retry delay (30s)
   logSampleSize: 3,                       // Number of articles to log as sample
+  batchSize: 20,                          // ✅ FIX: Batch size for memory safety
 };
 
 /* ======================
@@ -37,6 +40,8 @@ const safeDateISO = (date) => {
 
 /**
  * Normalize category safely with fallback
+ * Note: The cleaner will re-categorize using Bangla NLP.
+ * This RSS category is kept as reference but may be overwritten.
  */
 function normalizeCategory(category) {
   if (!category) return "General";
@@ -52,7 +57,7 @@ function normalizeCategory(category) {
 }
 
 /**
- * Retry wrapper with exponential backoff
+ * Retry wrapper with exponential backoff (capped)
  */
 async function withRetry(fn, label, retries = CONFIG.maxRetries) {
   let lastError;
@@ -63,7 +68,11 @@ async function withRetry(fn, label, retries = CONFIG.maxRetries) {
       lastError = err;
       console.warn(`⚠️ ${label} attempt ${attempt}/${retries} failed: ${err.message}`);
       if (attempt < retries) {
-        const delay = CONFIG.retryDelayMs * Math.pow(2, attempt - 1);
+        // ✅ FIX: Cap exponential backoff to prevent extreme delays
+        const delay = Math.min(
+          CONFIG.retryDelayMs * Math.pow(2, attempt - 1),
+          CONFIG.maxRetryDelayMs
+        );
         await new Promise(res => setTimeout(res, delay));
       }
     }
@@ -128,7 +137,6 @@ export function startAutoNewsUpdater() {
       scraped: 0,
       apiSaved: 0,
       cleaned: 0,
-      newArticles: 0,
       inserted: 0,
       updated: 0,
       errors: [],
@@ -189,11 +197,12 @@ export function startAutoNewsUpdater() {
                 content = scraped?.content?.trim() || null;
                 image = scraped?.image || null;
               } catch (scraperErr) {
-                // Non-fatal: continue with RSS data
-                console.debug(`⚠️ Scraper skipped for ${item.link}: ${scraperErr.message}`);
+                // ✅ FIX: Use console.warn for production visibility
+                console.warn(`⚠️ Scraper skipped for ${item.link}: ${scraperErr.message}`);
               }
             }
 
+            // ✅ FIX #3: Use `publishedAt` (standard field name expected by cleaner)
             const article = {
               title: item.title?.trim() || "Untitled",
               description: item.shortDescription?.trim() || "",
@@ -201,8 +210,8 @@ export function startAutoNewsUpdater() {
               image: image || item.image || null,
               source: item.source || "RSS",
               url: item.link.trim(),
-              pubDate: item.publishDate ? new Date(item.publishDate) : new Date(),
-              category: normalizeCategory(item.category),
+              publishedAt: item.publishDate ? new Date(item.publishDate) : new Date(),
+              category: normalizeCategory(item.category), // RSS category (may be overwritten by cleaner)
               referenceType: "rss",
               updatedAt: new Date(),
               scrapedAt: content ? new Date() : null,
@@ -238,11 +247,32 @@ export function startAutoNewsUpdater() {
       }
 
       /* ======================
-         4️⃣ CLEAN & VALIDATE
+         4️⃣ CLEAN & VALIDATE (BATCHED FOR MEMORY SAFETY)
       ====================== */
       console.log(`🧹 Cleaning articles (before: ${allArticles.length})`);
       
-      const cleanedArticles = cleanNewsData(allArticles)
+      // ✅ FIX #2 + #4: Add await + batch processing + options
+      let cleanedArticles = [];
+      
+      // Process in batches to avoid memory issues with large feeds
+      for (let i = 0; i < allArticles.length; i += CONFIG.batchSize) {
+        const batch = allArticles.slice(i, i + CONFIG.batchSize);
+        const batchCleaned = await cleanNewsData(batch, {
+          enableDedupe: true,      // Let cleaner handle internal deduplication
+          batchSize: 10,           // Internal batching for embeddings
+          minConfidence: 0.3,      // Filter low-confidence categorizations
+          enableDedupe: true       // Remove duplicates within batch
+        });
+        cleanedArticles.push(...batchCleaned);
+        
+        // Optional: Small delay between batches to prevent CPU spike
+        if (i + CONFIG.batchSize < allArticles.length) {
+          await new Promise(res => setTimeout(res, 50));
+        }
+      }
+      
+      // Final validation + normalization
+      cleanedArticles = cleanedArticles
         .filter(isValidArticle)
         .map(article => ({
           ...article,
@@ -255,27 +285,21 @@ export function startAutoNewsUpdater() {
       console.log(`✨ After cleaning: ${stats.cleaned} valid articles`);
 
       /* ======================
-         5️⃣ DEDUPE AGAINST DATABASE
-      ====================== */
-      const existingDocs = await News.find(
-        { url: { $in: cleanedArticles.map(a => a.url) } },
-        { url: 1, _id: 0 }
-      ).lean();
-
-      const existingSet = new Set(existingDocs.map(d => d.url));
-      const newArticles = cleanedArticles.filter(a => !existingSet.has(a.url));
-
-      stats.newArticles = newArticles.length;
-      console.log(`🆕 New articles to insert: ${stats.newArticles}`);
-
-      /* ======================
-         6️⃣ BULK UPSERT (with error isolation)
+         5️⃣ BULK UPSERT (with error isolation)
+         ✅ FIX: Removed redundant pre-cleaner DB deduplication
+         - cleanNewsData already dedupes internally
+         - bulkWrite with upsert handles DB-level duplicates
       ====================== */
       if (cleanedArticles.length > 0) {
         const operations = cleanedArticles.map(article => ({
           updateOne: {
-            filter: { url: article.url }, // Only match by URL to avoid false positives
-            update: { $set: { ...article, updatedAt: new Date() } },
+            filter: { url: article.url }, // Match by URL only (requires unique index)
+            update: { 
+              $set: { 
+                ...article, 
+                updatedAt: new Date() 
+              } 
+            },
             upsert: true,
           },
         }));
@@ -291,7 +315,7 @@ export function startAutoNewsUpdater() {
           
           console.log(`✅ Database: ${stats.inserted} inserted, ${stats.updated} updated`);
 
-          // Safe sample logging (FIXES THE BUG!)
+          // Safe sample logging
           if (cleanedArticles.length > 0) {
             console.log("\n📋 Sample processed articles:");
             cleanedArticles
@@ -299,7 +323,8 @@ export function startAutoNewsUpdater() {
               .forEach((a, i) => {
                 console.log(
                   `  ${i + 1}. "${a.title.substring(0, 60)}${a.title.length > 60 ? '...' : ''}"` +
-                  ` | ${a.category}` +
+                  ` | Category: ${a.category}` +  // Will be Bangla from cleaner (e.g., "রাজনীতি")
+                  ` | Confidence: ${(a.confidence * 100).toFixed(0)}%` +
                   ` | Updated: ${safeDateISO(a.updatedAt)}`
                 );
               });
@@ -330,7 +355,7 @@ export function startAutoNewsUpdater() {
       }
 
       /* ======================
-         7️⃣ RUN COMPLETE
+         6️⃣ RUN COMPLETE
       ====================== */
       const endTime = new Date();
       const duration = endTime - startTime;
