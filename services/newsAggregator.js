@@ -91,51 +91,47 @@ export async function fetchAndSaveAllNews() {
       })
     );
 
-    /* ===================================================
-       3️⃣ FILTER + CLEAN ARTICLES
-    ==================================================== */
-    console.log("🧹 Filtering and cleaning articles...");
+/* ===================================================
+   3️⃣ FILTER + CLEAN ARTICLES (FIXED)
+=================================================== */
+console.log("🧹 Filtering and cleaning articles...");
 
-    const validRSS = rssArticles.filter(a => a && a.url && typeof a.url === "string");
-    const cleanedRSS = cleanNewsData(validRSS);
-    console.log(`✅ Articles after cleaning: ${cleanedRSS.length}`);
+const validRSS = rssArticles.filter(a => a && a.url && typeof a.url === "string");
 
-    /* ===================================================
-       4️⃣ BULK UPSERT RSS ARTICLES TO MONGODB
-    ==================================================== */
-    console.log("💾 Saving/updating articles to MongoDB...");
+// ✅ FIX: Add await
+const cleanedRSS = await cleanNewsData(validRSS, { 
+  batchSize: 10,  // control memory
+  enableDedupe: true 
+});
 
-    let addedCount = 0;
-    let updatedCount = 0;
+console.log(`✅ Articles after cleaning: ${cleanedRSS.length}`);
 
-    if (cleanedRSS.length > 0) {
-      const bulkOps = cleanedRSS.map(article => ({
-        updateOne: {
-          filter: { url: article.url },
-          update: { $set: article },
-          upsert: true
-        }
-      }));
+/* ===================================================
+   4️⃣ BULK UPSERT WITH ERROR HANDLING (FIXED)
+=================================================== */
+console.log("💾 Saving/updating articles to MongoDB...");
 
-      const result = await News.bulkWrite(bulkOps);
+let addedCount = 0;
+let updatedCount = 0;
 
-      addedCount = result.upsertedCount || 0;
-      updatedCount = result.modifiedCount || 0;
+if (cleanedRSS.length > 0) {
+  try {
+    const bulkOps = cleanedRSS.map(article => ({
+      updateOne: {
+        filter: { url: article.url },
+        update: { $set: article },
+        upsert: true
+      }
+    }));
 
-      console.log(`✅ ${addedCount} new RSS articles added`);
-      console.log(`🔄 ${updatedCount} existing RSS articles updated`);
-
-      // 🔥 Show first 5 sample articles
-      const sampleArticles = cleanedRSS.slice(0, 5);
-      console.log("\n📰 Sample updated articles:");
-      sampleArticles.forEach((a, i) => {
-        console.log(
-          `${i + 1}. ${a.title}\n   🔗 ${a.url}\n   🏷 Category: ${a.category}\n   ⏱ UpdatedAt: ${a.updatedAt.toISOString()}\n`
-        );
-      });
-    } else {
-      console.log("⚠️ No RSS articles to save/update");
-    }
+    const result = await News.bulkWrite(bulkOps);
+    addedCount = result.upsertedCount || 0;
+    updatedCount = result.modifiedCount || 0;
+    
+  } catch (dbErr) {
+    console.error("❌ MongoDB bulkWrite failed:", dbErr.message);
+    // Optional: log failed articles for retry
+  }
 
     /* ===================================================
        5️⃣ FETCH NEWS API
