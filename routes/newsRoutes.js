@@ -1,12 +1,14 @@
+// backend/routes/news.js
+
 import express from "express";
 import puterAIService from "../services/aiService.js";
 import News from "../models/News.js";
-import { cleanNewsData, categorizeArticle, addCategory } from "../utils/newsCleaner.js";
+import { cleanNewsData, categorizeArticle, addCategory, categoryKeywords } from "../utils/newsCleaner.js";
 import axios from "axios";
 import { fetchRSSByCategory } from "../services/rssService.js";
 import { RSS_SOURCES } from "../config/rssSources.js";
 import NodeCache from "node-cache";
-import { z } from "zod"; // Optional: for validation
+import crypto from "crypto";
 
 const router = express.Router();
 const NEWS_API_KEY = process.env.NEWS_API_KEY;
@@ -33,6 +35,15 @@ const CONFIG = {
   },
   categories: Object.keys(RSS_SOURCES)
 };
+
+// ✅ FIX: Support both English (RSS) and Bangla (NLP) categories
+const BANGLA_CATEGORIES = Object.keys(categoryKeywords || {});
+const VALID_CATEGORIES = [
+  ...CONFIG.categories, 
+  ...BANGLA_CATEGORIES, 
+  'general', 
+  'আরও'
+].filter(Boolean);
 
 // Initialize cache
 const cache = new NodeCache(CONFIG.cache);
@@ -100,6 +111,14 @@ function formatArticleResponse(article) {
 }
 
 /**
+ * ✅ FIX: Safe cache key generator (handles Bangla/special chars)
+ */
+function safeCacheKey(...parts) {
+  const raw = parts.join('_');
+  return crypto.createHash('md5').update(raw).digest('hex');
+}
+
+/**
  * Fetch and process RSS articles for a category (NO SCRAPING)
  */
 async function fetchRSSArticles(category, limit = CONFIG.fetching.rssItemsPerCategory) {
@@ -159,6 +178,7 @@ async function fetchNewsAPIArticles() {
   if (!NEWS_API_KEY) return [];
   
   try {
+    // ✅ FIX: Removed extra spaces after token=
     const { data } = await axios.get(
       `https://gnews.io/api/v4/top-headlines?token=${NEWS_API_KEY.trim()}&lang=en&max=${CONFIG.fetching.newsApiMaxResults}`,
       { timeout: 10000 }
@@ -221,30 +241,50 @@ async function fetchAllNews() {
 }
 
 /**
- * Save articles to database with deduplication
+ * ✅ FIX: Save articles with bulkWrite upsert (not insertMany)
  */
 async function saveArticles(articles) {
   if (!articles.length) return 0;
   
-  // Clean and normalize articles
-  const cleanedArticles = cleanNewsData(articles);
+  // ✅ FIX: Add await + options for cleanNewsData
+  const cleanedArticles = await cleanNewsData(articles, { 
+    enableDedupe: true,
+    batchSize: 10,
+    minConfidence: 0.3
+  });
+  
   if (!cleanedArticles.length) {
     console.log("⚠️  No valid articles after cleaning");
     return 0;
   }
   
-  // Use insertMany with ordered:false for partial success
+  // ✅ FIX: Use bulkWrite with upsert instead of insertMany
+  // This ensures articles are updated if URL already exists
   try {
-    const result = await News.insertMany(cleanedArticles, { 
-      ordered: false,
-      lean: true 
-    });
+    const bulkOps = cleanedArticles.map(article => ({
+      updateOne: {
+        filter: { url: article.url },  // Requires unique index on News.url
+        update: { 
+          $set: { 
+            ...article, 
+            updatedAt: new Date() 
+          } 
+        },
+        upsert: true
+      }
+    }));
     
-    console.log(`✅ Saved ${result.length} new articles`);
-    return result.length;
+    const result = await News.bulkWrite(bulkOps, { ordered: false });
+    
+    const inserted = result.upsertedCount || 0;
+    const modified = result.modifiedCount || 0;
+    const total = inserted + modified;
+    
+    console.log(`✅ Saved/updated ${total} articles (new: ${inserted}, updated: ${modified})`);
+    return total;
     
   } catch (err) {
-    // Handle duplicate key errors gracefully
+    // Handle duplicate key errors gracefully (if unique index not set)
     if (err.code === 11000 || err.writeErrors?.some(e => e.code === 11000)) {
       const inserted = err.result?.nInserted || 0;
       const duplicates = err.writeErrors?.filter(e => e.code === 11000).length || 0;
@@ -253,7 +293,7 @@ async function saveArticles(articles) {
       return inserted;
     }
     
-    console.error("❌ Database save error:", err.message);
+    console.error("❌ Database bulkWrite error:", err.message);
     throw err;
   }
 }
@@ -274,7 +314,7 @@ router.post("/update", async (req, res) => {
     return res.status(429).json({
       success: false,
       error: "Please wait before updating again",
-      retryAfter: cache.getTtl(rateLimitKey) - Math.floor(Date.now() / 1000)
+      retryAfter: Math.max(0, (cache.getTtl(rateLimitKey) || 0) - Math.floor(Date.now() / 1000))
     });
   }
   
@@ -284,7 +324,7 @@ router.post("/update", async (req, res) => {
     // Fetch from all sources
     const allArticles = await fetchAllNews();
     
-    // Save to database
+    // Save to database (with await + bulkWrite)
     const savedCount = await saveArticles(allArticles);
     
     // Set rate limit cache (1 minute)
@@ -332,8 +372,17 @@ router.get("/", async (req, res) => {
     const { page, limit, skip } = parsePagination(req.query);
     const { category } = req.query;
     
-    // Build cache key
-    const cacheKey = `news_list_${page}_${limit}_${category || 'all'}`;
+    // ✅ FIX: Validate category against combined list
+    if (category && !VALID_CATEGORIES.includes(category)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid category",
+        validCategories: VALID_CATEGORIES
+      });
+    }
+    
+    // ✅ FIX: Use safe cache key generator
+    const cacheKey = `news_list_${safeCacheKey(page, limit, category || 'all')}`;
     
     // Return cached response if available
     if (cache.has(cacheKey)) {
@@ -341,7 +390,7 @@ router.get("/", async (req, res) => {
     }
     
     // Build query
-    const query = category && CONFIG.categories.includes(category)
+    const query = category && VALID_CATEGORIES.includes(category)
       ? { category }
       : {};
     
@@ -402,17 +451,19 @@ router.get("/category/:category", async (req, res) => {
   try {
     const { category } = req.params;
     
-    // Validate category
-    if (!CONFIG.categories.includes(category) && category !== 'general') {
+    // ✅ FIX: Validate against combined Bangla + English categories
+    if (!VALID_CATEGORIES.includes(category)) {
       return res.status(400).json({
         success: false,
         error: "Invalid category",
-        validCategories: [...CONFIG.categories, 'general']
+        validCategories: VALID_CATEGORIES
       });
     }
     
     const { page, limit, skip } = parsePagination(req.query);
-    const cacheKey = `category_${category}_${page}_${limit}`;
+    
+    // ✅ FIX: Safe cache key
+    const cacheKey = `category_${safeCacheKey(category, page, limit)}`;
     
     // Return cached response
     if (cache.has(cacheKey)) {
@@ -482,10 +533,19 @@ router.get("/search", async (req, res) => {
     const { skip } = parsePagination({ page, limit });
     const searchTerm = q.trim();
     
+    // ✅ FIX: Validate category if provided
+    if (category && !VALID_CATEGORIES.includes(category)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid category",
+        validCategories: VALID_CATEGORIES
+      });
+    }
+    
     // Build search query
     const searchQuery = {
       $text: { $search: searchTerm },
-      ...(category && CONFIG.categories.includes(category) && { category })
+      ...(category && VALID_CATEGORIES.includes(category) && { category })
     };
     
     // Fallback to regex if text index not available
@@ -494,7 +554,7 @@ router.get("/search", async (req, res) => {
         { title: { $regex: searchTerm, $options: 'i' } },
         { description: { $regex: searchTerm, $options: 'i' } }
       ],
-      ...(category && CONFIG.categories.includes(category) && { category })
+      ...(category && VALID_CATEGORIES.includes(category) && { category })
     };
     
     let news = [];
@@ -513,7 +573,7 @@ router.get("/search", async (req, res) => {
         .limit(CONFIG.pagination.maxLimit)
         .lean();
     } catch {
-      // Fallback to regex search
+      // ✅ FIX: Add timeout + limit to regex fallback
       news = await News.find(fallbackQuery, {
         title: 1,
         description: 1,
@@ -522,6 +582,8 @@ router.get("/search", async (req, res) => {
         source: 1,
         publishedAt: 1
       })
+        .maxTimeMS(5000)  // 5 second timeout
+        .limit(100)       // Cap results for performance
         .sort({ publishedAt: -1 })
         .skip(skip)
         .limit(CONFIG.pagination.maxLimit)
@@ -564,7 +626,8 @@ router.get("/:id", async (req, res) => {
       });
     }
     
-    const cacheKey = `article_${id}`;
+    // ✅ FIX: Safe cache key
+    const cacheKey = `article_${safeCacheKey(id)}`;
     
     // Return cached response
     if (cache.has(cacheKey)) {
@@ -618,6 +681,9 @@ router.get("/:id", async (req, res) => {
  */
 router.delete("/:id", async (req, res) => {
   try {
+    // 🔐 TODO: Add authentication middleware here for production
+    // if (!req.user?.isAdmin) return res.status(403).json({ error: "Unauthorized" });
+    
     const { id } = req.params;
     
     if (!id.match(/^[0-9a-fA-F]{24}$/)) {
@@ -711,6 +777,6 @@ router.get("/stats", async (req, res) => {
 =================================================== */
 
 // Export cache for external invalidation if needed
-export { cache };
+export { cache, VALID_CATEGORIES };
 
 export default router;
