@@ -132,6 +132,7 @@ if (cleanedRSS.length > 0) {
     console.error("❌ MongoDB bulkWrite failed:", dbErr.message);
     // Optional: log failed articles for retry
   }
+}
 
     /* ===================================================
        5️⃣ FETCH NEWS API
