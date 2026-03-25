@@ -1,16 +1,17 @@
+// backend/puterService.js
+import express from "express";
 import { puter } from "@heyputer/puter.js";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 class PuterAIService {
   constructor() {
     this.isAvailable = true;
-    this.initialize();
+    console.log("✅ Puter.js backend service initialized");
   }
 
-  initialize() {
-    console.log("✅ Puter.js initialized for frontend AI");
-  }
-
-  // 🔁 Retry system
+  // 🔁 Retry system for Puter.js AI calls
   async callAIWithRetry(payload, retries = 2) {
     try {
       const response = await puter.ai.chat(payload);
@@ -35,19 +36,14 @@ class PuterAIService {
 
   // 📰 Rewrite Article
   async rewriteArticle(articleText) {
-    if (!articleText || articleText.length < 10) {
-      return articleText;
-    }
+    if (!articleText || articleText.length < 10) return articleText;
 
-    try {
-      console.log("🧠 Starting AI rewrite...");
+    const textToProcess =
+      articleText.length > 3000
+        ? articleText.substring(0, 3000) + "..."
+        : articleText;
 
-      const textToProcess =
-        articleText.length > 3000
-          ? articleText.substring(0, 3000) + "..."
-          : articleText;
-
-      const prompt = `
+    const prompt = `
 You are a professional Bangla news writer. Rewrite the following news article in Bangla:
 1. Keep all facts accurate
 2. Make it engaging and structured
@@ -57,6 +53,7 @@ You are a professional Bangla news writer. Rewrite the following news article in
 ${textToProcess}
 `;
 
+    try {
       const response = await this.callAIWithRetry({
         messages: [{ role: "user", content: prompt }],
         model: "gpt-3.5-turbo",
@@ -64,32 +61,17 @@ ${textToProcess}
         temperature: 0.7,
       });
 
-      // ✅ Validate response
-      if (!response || typeof response !== "object") {
-        console.error("❌ Invalid AI response:", response);
-        return articleText;
-      }
+      if (!response) return articleText;
 
-      let rewrittenText = articleText;
-
-      // ✅ Extract safely
       if (response.choices && Array.isArray(response.choices)) {
-        rewrittenText = response.choices[0]?.message?.content;
-      } else if (typeof response.content === "string") {
-        rewrittenText = response.content;
+        return response.choices[0]?.message?.content || articleText;
       }
 
-      // ❗ Final validation
-      if (!rewrittenText || typeof rewrittenText !== "string") {
-        return articleText;
-      }
+      if (typeof response.content === "string") return response.content;
 
-      console.log(`✅ Rewrite success (${rewrittenText.length} chars)`);
-
-      return rewrittenText;
-
-    } catch (error) {
-      console.error("❌ AI Rewrite Error:", error.message);
+      return articleText;
+    } catch (err) {
+      console.error("❌ AI Rewrite Error:", err.message);
       return articleText;
     }
   }
@@ -98,9 +80,12 @@ ${textToProcess}
   async summarizeArticle(articleText, maxLength = 200) {
     if (!articleText) return "";
 
-    try {
-      const prompt = `Summarize this in ${maxLength} characters in Bangla:\n${articleText.substring(0, 1000)}`;
+    const prompt = `Summarize this in ${maxLength} characters in Bangla:\n${articleText.substring(
+      0,
+      1000
+    )}`;
 
+    try {
       const response = await this.callAIWithRetry({
         messages: [{ role: "user", content: prompt }],
         model: "gpt-3.5-turbo",
@@ -108,32 +93,51 @@ ${textToProcess}
         temperature: 0.3,
       });
 
-      // ✅ Validate response
-      if (!response || typeof response !== "object") {
-        return articleText.substring(0, maxLength);
-      }
-
-      let summary = articleText.substring(0, maxLength);
+      if (!response) return articleText.substring(0, maxLength);
 
       if (response.choices && Array.isArray(response.choices)) {
-        summary = response.choices[0]?.message?.content;
-      } else if (typeof response.content === "string") {
-        summary = response.content;
+        return response.choices[0]?.message?.content || articleText.substring(0, maxLength);
       }
 
-      if (!summary || typeof summary !== "string") {
-        return articleText.substring(0, maxLength);
-      }
+      if (typeof response.content === "string") return response.content;
 
-      return summary;
-
-    } catch (error) {
-      console.error("❌ Summarization error:", error.message);
+      return articleText.substring(0, maxLength);
+    } catch (err) {
+      console.error("❌ Summarization error:", err.message);
       return articleText.substring(0, maxLength);
     }
   }
 }
 
-// ✅ Singleton export
+// ✅ Singleton instance
 const puterAIService = new PuterAIService();
+
+// ==========================
+// Express backend API
+// ==========================
+const app = express();
+app.use(express.json());
+
+// Rewrite endpoint
+app.post("/api/rewrite", async (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: "Text is required" });
+
+  const rewritten = await puterAIService.rewriteArticle(text);
+  res.json({ rewritten });
+});
+
+// Summarize endpoint
+app.post("/api/summarize", async (req, res) => {
+  const { text, maxLength } = req.body;
+  if (!text) return res.status(400).json({ error: "Text is required" });
+
+  const summary = await puterAIService.summarizeArticle(text, maxLength || 200);
+  res.json({ summary });
+});
+
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Puter.js backend running on port ${PORT}`));
+
 export default puterAIService;
