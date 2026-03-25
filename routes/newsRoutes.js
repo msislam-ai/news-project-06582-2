@@ -8,6 +8,7 @@ import { fetchRSSByCategory } from "../services/rssService.js";
 import { RSS_SOURCES } from "../config/rssSources.js";
 import NodeCache from "node-cache";
 import crypto from "crypto";
+import puterAIService from "../services/aiService.js"; // AI service import
 
 const router = express.Router();
 const NEWS_API_KEY = process.env.NEWS_API_KEY;
@@ -108,7 +109,6 @@ async function fetchRSSArticles(category, limit = CONFIG.fetching.rssItemsPerCat
 async function fetchNewsAPIArticles() {
   if (!NEWS_API_KEY) return [];
   try {
-    // ✅ FIX: Removed extra spaces after token=
     const { data } = await axios.get(
       `https://gnews.io/api/v4/top-headlines?token=${NEWS_API_KEY.trim()}&lang=en&max=${CONFIG.fetching.newsApiMaxResults}`,
       { timeout: 10000 }
@@ -147,18 +147,43 @@ async function fetchAllNews() {
   return allArticles;
 }
 
-// Save articles to DB
-async function saveArticles(articles) {
+// ================= SAVE ARTICLES WITH AI =================
+async function saveArticlesWithAI(articles) {
   if (!articles.length) return 0;
   const cleaned = await cleanNewsData(articles, { enableDedupe: true, batchSize: 10, minConfidence: 0.3 });
   if (!cleaned.length) return 0;
 
   try {
-    const bulkOps = cleaned.map(a => ({
-      updateOne: { filter: { url: a.url }, update: { $set: { ...a, updatedAt: new Date() } }, upsert: true }
-    }));
+    const bulkOps = [];
+
+    for (const article of cleaned) {
+      let aiContent = article.content || article.description || "";
+
+      // ✅ Generate AI content from description
+      try {
+        aiContent = await puterAIService.rewriteArticle(article.description || "");
+      } catch (err) {
+        console.warn(`AI content generation failed for: ${article.title}`, err.message);
+      }
+
+      bulkOps.push({
+        updateOne: {
+          filter: { url: article.url },
+          update: { 
+            $set: { 
+              ...article,
+              content: aiContent,
+              updatedAt: new Date() 
+            } 
+          },
+          upsert: true
+        }
+      });
+    }
+
     const result = await News.bulkWrite(bulkOps, { ordered: false });
     return (result.upsertedCount || 0) + (result.modifiedCount || 0);
+
   } catch (err) {
     console.error("Database bulkWrite error:", err.message);
     return 0;
@@ -166,7 +191,6 @@ async function saveArticles(articles) {
 }
 
 // ================= REUSABLE HANDLER =================
-// Extracted logic for listing news (used by both "/" and "/all" routes)
 async function handleListNews(req, res) {
   try {
     const { page, limit, skip } = parsePagination(req.query);
@@ -213,20 +237,20 @@ router.post("/update", async (req, res) => {
 
   try {
     const articles = await fetchAllNews();
-    const savedCount = await saveArticles(articles);
+    const savedCount = await saveArticlesWithAI(articles); // AI rewrite content before saving
     cache.set(rateLimitKey, true, 60);
     cache.keys().forEach(k => { if (k.startsWith("news_") || k.startsWith("category_")) cache.del(k); });
-    res.json({ success: true, message: "News updated", stats: { fetched: articles.length, saved: savedCount } });
+    res.json({ success: true, message: "News updated with AI content", stats: { fetched: articles.length, saved: savedCount } });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, error: "Failed to update news" });
   }
 });
 
-// ✅ NEW: GET /api/news/all (alias for frontend compatibility)
+// GET /api/news/all
 router.get("/all", handleListNews);
 
-// GET /api/news (original route)
+// GET /api/news
 router.get("/", handleListNews);
 
 // GET /api/news/:id
