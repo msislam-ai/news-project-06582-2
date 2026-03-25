@@ -1,3 +1,5 @@
+// backend/utils/newsCleaner.js
+
 import { MongoClient } from "mongodb";
 import { puter } from "@heyputer/puter.js";
 import dotenv from "dotenv";
@@ -138,7 +140,10 @@ const CONFIG = {
   
   // Data retention
   deleteOlderThanDays: 5,
-  minDescriptionLength: 40
+  minDescriptionLength: 40,
+  
+  // Debug
+  debugMode: false
 };
 
 /* ===================================================
@@ -207,7 +212,7 @@ const keywordMap = {
       { word: "আইন পাস", weight: 3, stem: "আইন পাস" },
       { word: "সংবিধান", weight: 3, stem: "সংবিধান" }
     ],
-    negative: ["খেলা", "ক্রিকেট", "ফুটবল", "সিনেমা"], // Avoid false positives
+    negative: ["খেলা", "ক্রিকেট", "ফুটবল", "সিনেমা"],
     semanticExamples: [
       "সংসদে নতুন আইন পাস হয়েছে",
       "প্রধানমন্ত্রী জাতির উদ্দেশ্যে ভাষণ দিয়েছেন",
@@ -675,21 +680,8 @@ function mapCategory(cat) {
 }
 
 /* ===================================================
-   🔍 ENHANCED DUPLICATE DETECTION
+   🔍 ENHANCED DUPLICATE DETECTION - ✅ FIXED $trim SYNTAX
 =================================================== */
-function calculateTitleSimilarity(title1, title2) {
-  const t1 = normalizeText(title1).split(' ');
-  const t2 = normalizeText(title2).split(' ');
-  
-  const set1 = new Set(t1);
-  const set2 = new Set(t2);
-  
-  const intersection = [...set1].filter(w => set2.has(w)).length;
-  const union = new Set([...set1, ...set2]).size;
-  
-  return union > 0 ? intersection / union : 0;
-}
-
 async function removeDuplicates(collection) {
   console.log("🔍 Checking for duplicates...");
   
@@ -697,7 +689,15 @@ async function removeDuplicates(collection) {
   const groups = await collection.aggregate([
     { 
       $addFields: { 
-        normalizedTitle: { $toLower: { $trim: "$title" } } 
+        // ✅ FIX: $trim now uses proper object syntax with "input" field
+        normalizedTitle: { 
+          $toLower: { 
+            $trim: { 
+              input: { $ifNull: ["$title", ""] },  // Handle null values safely
+              chars: " \t\n\r"                      // Optional: specify chars to trim
+            } 
+          } 
+        } 
       } 
     },
     { 
