@@ -1,7 +1,6 @@
 // backend/routes/news.js
 
 import express from "express";
-import puterAIService from "../services/aiService.js";
 import News from "../models/News.js";
 import { cleanNewsData, categorizeArticle, addCategory, categoryKeywords } from "../utils/newsCleaner.js";
 import axios from "axios";
@@ -30,7 +29,6 @@ const CONFIG = {
   fetching: {
     rssItemsPerCategory: 5,
     newsApiMaxResults: 10,
-    enableAIRewrite: true,
     parallelFetchLimit: 10   // Max concurrent RSS fetches
   },
   categories: Object.keys(RSS_SOURCES)
@@ -119,7 +117,7 @@ function safeCacheKey(...parts) {
 }
 
 /**
- * Fetch and process RSS articles for a category (NO SCRAPING)
+ * Fetch and process RSS articles for a category (NO AI, NO SCRAPING)
  */
 async function fetchRSSArticles(category, limit = CONFIG.fetching.rssItemsPerCategory) {
   try {
@@ -128,22 +126,8 @@ async function fetchRSSArticles(category, limit = CONFIG.fetching.rssItemsPerCat
     
     const articles = await Promise.allSettled(
       items.map(async (item) => {
-        // Use RSS description or fallback to title
-        const referenceText = item.shortDescription || item.title;
-        
-        // Optional AI rewriting
-        let content = referenceText;
-        if (CONFIG.fetching.enableAIRewrite && referenceText?.length > 50) {
-          try {
-            const rewritten = await puterAIService.rewriteArticle(referenceText);
-            if (rewritten && rewritten.length > referenceText.length * 0.7) {
-              content = rewritten;
-            }
-          } catch (aiErr) {
-            console.warn(`⚠️  AI rewrite failed for "${item.title}":`, aiErr.message);
-            // Fallback to original
-          }
-        }
+        // Use RSS description or fallback to title - NO AI rewriting
+        const content = item.shortDescription || item.title;
         
         return {
           title: item.title?.trim(),
